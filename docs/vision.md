@@ -23,7 +23,7 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 
 - A app é nativa de macOS e usa Swift/SwiftUI.
 - A app vive principalmente na barra de menus.
-- Existe um botão flutuante sobre a zona final da linha de escrita da janela ativa do Terminal.app.
+- Existe um botão flutuante discreto sobre a zona final da linha de escrita da janela ativa do Terminal.app.
 - O botão acompanha a janela/tab ativa e não fica fixo num canto do monitor.
 - Existe também um atalho global para abrir rapidamente o compositor.
 - O onboarding de Acessibilidade é curto e informal, adequado a uma ferramenta pessoal.
@@ -33,6 +33,8 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 - Existe um workspace por tab/sessão do Terminal.app.
 - Uma única janela da app apresenta os workspaces numa lista lateral.
 - Cada workspace mantém o seu próprio rascunho.
+- `Ctrl+Tab` avança entre workspaces e `Ctrl+Shift+Tab` volta ao anterior.
+- A linha atualmente escrita no `zsh` do tab ativo é sincronizada em tempo real para o editor do workspace correspondente.
 - Ao voltar a um tab, o rascunho desse tab continua disponível.
 - Ao fechar o tab do Terminal, o workspace associado desaparece.
 - A app não lê nem interpreta o estado interno do Codex.

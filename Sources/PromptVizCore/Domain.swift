@@ -1,8 +1,16 @@
 import Foundation
 
+public enum TerminalInputRouting {
+    public static func shouldMirror(selectedTTY: String?, observedTTY: String?) -> Bool {
+        guard let selectedTTY, let observedTTY else { return false }
+        return selectedTTY == observedTTY
+    }
+}
+
 public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let terminalSessionID: String
+    public var terminalTTY: String?
     public var title: String
     public var draft: String
     public let createdAt: Date
@@ -11,6 +19,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public init(
         id: UUID = UUID(),
         terminalSessionID: String,
+        terminalTTY: String? = nil,
         title: String,
         draft: String = "",
         createdAt: Date,
@@ -18,6 +27,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.terminalSessionID = terminalSessionID
+        self.terminalTTY = terminalTTY
         self.title = title
         self.draft = draft
         self.createdAt = createdAt
@@ -101,14 +111,22 @@ public final class WorkspaceStore {
     }
 
     @discardableResult
-    public func workspace(for terminalSessionID: String, title: String) -> Workspace {
+    public func workspace(
+        for terminalSessionID: String,
+        title: String,
+        terminalTTY: String? = nil
+    ) -> Workspace {
         if let index = workspaces.firstIndex(where: { $0.terminalSessionID == terminalSessionID }) {
             workspaces[index].title = title
+            if let terminalTTY {
+                workspaces[index].terminalTTY = terminalTTY
+            }
             return workspaces[index]
         }
 
         let workspace = Workspace(
             terminalSessionID: terminalSessionID,
+            terminalTTY: terminalTTY,
             title: title,
             createdAt: now()
         )

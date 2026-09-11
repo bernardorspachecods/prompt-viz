@@ -30,6 +30,14 @@ Para fechar instâncias antigas, recompilar e abrir a app numa só operação:
 ./scripts/run-prompt-viz.sh
 ```
 
+Para sincronizar em tempo real a linha que está a ser escrita no `zsh` do Terminal.app:
+
+```bash
+./scripts/install-prompt-viz-zsh.sh
+```
+
+Depois abre um novo tab do Terminal ou executa `source ~/.zshrc` no tab atual.
+
 ## Validação automática
 
 ```bash

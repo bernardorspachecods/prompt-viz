@@ -14,8 +14,9 @@ struct PromptVizContractRunner {
         do {
             try templateContracts()
             try workspaceContracts()
+            try terminalInputRoutingContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (8 checks)")
+            print("PromptViz contracts: PASS (13 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -64,5 +65,26 @@ struct PromptVizContractRunner {
 
         try check(library.favorites.map(\.title) == ["Sê honesto"], "favorites are filtered")
         try check(library.search("BIAS").map(\.title) == ["Sem bias"], "snippet search ignores case")
+    }
+
+    private static func terminalInputRoutingContracts() throws {
+        try check(
+            TerminalInputRouting.shouldMirror(
+                selectedTTY: "/dev/ttys001",
+                observedTTY: "/dev/ttys001"
+            ),
+            "input from the selected terminal is mirrored"
+        )
+        try check(
+            !TerminalInputRouting.shouldMirror(
+                selectedTTY: "/dev/ttys001",
+                observedTTY: "/dev/ttys002"
+            ),
+            "input from another terminal is ignored"
+        )
+        try check(
+            !TerminalInputRouting.shouldMirror(selectedTTY: nil, observedTTY: "/dev/ttys001"),
+            "input is ignored without an associated workspace"
+        )
     }
 }

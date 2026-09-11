@@ -17,6 +17,7 @@ struct TerminalSession: Equatable, Identifiable {
     let id: String
     let title: String
     let processIdentifier: pid_t
+    let tty: String?
 }
 
 enum TerminalAutomationError: LocalizedError {
@@ -43,7 +44,7 @@ enum TerminalAutomationError: LocalizedError {
         case .accessibilityNotTrusted:
             return "O macOS ainda não permitiu ao Prompt Viz enviar teclas para outra app. Ativa o Prompt Viz em Acessibilidade e tenta novamente."
         case .automationNotTrusted:
-            return "O macOS bloqueou o Prompt Viz de controlar o Terminal.app. Autoriza o Prompt Viz a controlar o System Events quando aparecer o pedido."
+            return "O macOS bloqueou o Prompt Viz de ler o tab ativo do Terminal.app. Autoriza o Prompt Viz a controlar o Terminal.app nas definições de Automação."
         case .terminalNotActive:
             return "Ativa o tab correto do Terminal.app antes de enviar."
         case .terminalWindowUnavailable:
@@ -90,7 +91,7 @@ final class TerminalAutomation {
         )
 
         guard result == .success, let focusedWindow else {
-            return fallbackSession(for: application)
+            return try fallbackSession(for: application)
         }
 
         let windowElement = unsafeDowncast(focusedWindow, to: AXUIElement.self)
@@ -99,11 +100,13 @@ final class TerminalAutomation {
             .map { "window-\($0)" }
             ?? attributeString(windowElement, kAXIdentifierAttribute as CFString)
         let sessionID = "\(application.processIdentifier):\(windowIdentifier ?? title)"
+        let tty = try terminalTTY(for: application)
 
         return TerminalSession(
             id: sessionID,
             title: title,
-            processIdentifier: application.processIdentifier
+            processIdentifier: application.processIdentifier,
+            tty: tty
         )
     }
 
@@ -155,11 +158,12 @@ final class TerminalAutomation {
         })
     }
 
-    private func fallbackSession(for application: NSRunningApplication) -> TerminalSession {
+    private func fallbackSession(for application: NSRunningApplication) throws -> TerminalSession {
         TerminalSession(
             id: "\(application.processIdentifier):fallback",
             title: "Terminal.app",
-            processIdentifier: application.processIdentifier
+            processIdentifier: application.processIdentifier,
+            tty: try terminalTTY(for: application)
         )
     }
 
@@ -215,6 +219,28 @@ final class TerminalAutomation {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else { return nil }
         return value as? String
+    }
+
+    private func terminalTTY(for application: NSRunningApplication) throws -> String? {
+        let source = """
+        tell application "Terminal"
+            if (count of windows) is 0 then return ""
+            return tty of selected tab of front window
+        end tell
+        """
+
+        guard let script = NSAppleScript(source: source) else {
+            throw TerminalAutomationError.automationNotTrusted
+        }
+
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        guard error == nil else {
+            throw TerminalAutomationError.automationNotTrusted
+        }
+
+        let tty = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return tty.isEmpty ? nil : tty
     }
 
     private func windowNumber(
@@ -336,11 +362,20 @@ final class PromptVizModel: ObservableObject {
     let snippetLibrary: SnippetLibrary
     let terminalAutomation = TerminalAutomation()
     private let snippetPersistence = LocalSnippetPersistence()
+    private let terminalInputSync = TerminalInputSyncController()
+    private let terminalKeyMirror = TerminalKeyMirror()
     private var workspaceMonitor: Timer?
     private(set) var activeSession: TerminalSession?
 
     private init() {
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
+        terminalInputSync.onBufferChanged = { [weak self] buffer in
+            self?.applyTerminalInput(buffer)
+        }
+        terminalKeyMirror.onBufferChanged = { [weak self] buffer in
+            self?.applyTerminalInput(buffer)
+        }
+        terminalInputSync.start()
         sync()
         workspaceMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -356,6 +391,7 @@ final class PromptVizModel: ObservableObject {
 
     func captureActiveTerminalSession() {
         shouldOfferAccessibilitySettings = false
+        shouldOfferAutomationSettings = false
 
         guard terminalAutomation.isTerminalFrontmost else {
             errorMessage = TerminalAutomationError.terminalNotActive.localizedDescription
@@ -366,14 +402,21 @@ final class PromptVizModel: ObservableObject {
         do {
             let session = try terminalAutomation.activeSession()
             activeSession = session
-            let workspace = workspaceStore.workspace(for: session.id, title: session.title)
+            let workspace = workspaceStore.workspace(
+                for: session.id,
+                title: session.title,
+                terminalTTY: session.tty
+            )
             selectedWorkspaceID = workspace.id
-            editorText = workspace.draft
+            editorText = terminalKeyMirror.buffer(for: session.tty) ?? workspace.draft
+            terminalKeyMirror.reset(buffer: editorText, for: session.tty)
+            terminalInputSync.select(tty: session.tty)
             sync()
             openMainWindow()
         } catch {
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
+            shouldOfferAutomationSettings = (error as? TerminalAutomationError)?.isAutomationNotTrusted == true
             openMainWindow()
         }
     }
@@ -385,9 +428,27 @@ final class PromptVizModel: ObservableObject {
         activeSession = TerminalSession(
             id: workspace.terminalSessionID,
             title: workspace.title,
-            processIdentifier: workspace.terminalSessionID.split(separator: ":").first.flatMap { pid_t($0) } ?? 0
+            processIdentifier: workspace.terminalSessionID.split(separator: ":").first.flatMap { pid_t($0) } ?? 0,
+            tty: workspace.terminalTTY
         )
+        terminalKeyMirror.reset(buffer: editorText, for: workspace.terminalTTY)
+        terminalInputSync.select(tty: workspace.terminalTTY)
         sync()
+    }
+
+    func selectRelativeWorkspace(by offset: Int) {
+        guard !workspaces.isEmpty else { return }
+
+        guard
+            let selectedWorkspaceID,
+            let currentIndex = workspaces.firstIndex(where: { $0.id == selectedWorkspaceID })
+        else {
+            select(offset < 0 ? workspaces[workspaces.count - 1] : workspaces[0])
+            return
+        }
+
+        let nextIndex = (currentIndex + offset + workspaces.count) % workspaces.count
+        select(workspaces[nextIndex])
     }
 
     func updateEditorText(_ text: String) {
@@ -421,6 +482,7 @@ final class PromptVizModel: ObservableObject {
         do {
             try terminalAutomation.send(editorText, to: activeSession)
             updateEditorText("")
+            terminalKeyMirror.reset(buffer: "", for: activeSession.tty)
             openMainWindow()
         } catch {
             errorMessage = error.localizedDescription
@@ -458,6 +520,14 @@ final class PromptVizModel: ObservableObject {
         workspaceStore.updateDraft(editorText, for: selectedWorkspaceID)
     }
 
+    private func applyTerminalInput(_ text: String) {
+        guard let tty = activeSession?.tty else { return }
+        terminalKeyMirror.reset(buffer: text, for: tty)
+        editorText = text
+        saveCurrentDraft()
+        sync()
+    }
+
     private func sync() {
         workspaces = workspaceStore.workspaces
         snippets = snippetLibrary.snippets
@@ -481,9 +551,31 @@ final class PromptVizModel: ObservableObject {
             self.selectedWorkspaceID = nil
             activeSession = nil
             editorText = ""
+            terminalKeyMirror.reset(buffer: "")
+            terminalInputSync.select(tty: nil)
         }
 
         sync()
+    }
+
+    func handleTerminalKeyEvent(_ event: TerminalKeyEvent) {
+        guard
+            terminalAutomation.isTerminalFrontmost,
+            let observedSession = try? terminalAutomation.activeSession(),
+            let observedTTY = observedSession.tty
+        else { return }
+
+        terminalKeyMirror.handle(event, for: observedTTY)
+
+        guard
+            let selectedTTY = activeSession?.tty,
+            TerminalInputRouting.shouldMirror(
+                selectedTTY: selectedTTY,
+                observedTTY: observedTTY
+            )
+        else { return }
+
+        applyTerminalInput(terminalKeyMirror.buffer(for: observedTTY) ?? "")
     }
 }
 
@@ -497,7 +589,7 @@ struct PromptVizApp: App {
             Button("Abrir compositor") {
                 model.captureActiveTerminalSession()
             }
-            .keyboardShortcut("p", modifiers: [.command, .option])
+            .keyboardShortcut("e", modifiers: [.command])
 
             Divider()
 
@@ -510,7 +602,7 @@ struct PromptVizApp: App {
                 Button("Abrir compositor") {
                     model.captureActiveTerminalSession()
                 }
-                .keyboardShortcut("p", modifiers: [.command, .option])
+                .keyboardShortcut("e", modifiers: [.command])
             }
         }
     }
@@ -521,6 +613,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var floatingButton: FloatingButtonController?
     private var keyboardMonitor: Any?
+    private var workspaceSwitchMonitor: Any?
+    private var terminalInputMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = PromptVizModel.shared
@@ -533,16 +627,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         keyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
             guard
-                event.keyCode == 35,
-                event.modifierFlags.contains([.command, .option])
+                event.keyCode == 14,
+                event.modifierFlags.contains(.command),
+                !event.modifierFlags.contains(.option),
+                !event.modifierFlags.contains(.control),
+                !event.modifierFlags.contains(.shift)
             else { return }
             model.captureActiveTerminalSession()
+        }
+
+        workspaceSwitchMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let modifiers = event.modifierFlags
+            guard
+                event.keyCode == 48,
+                modifiers.contains(.control),
+                !modifiers.contains(.command),
+                !modifiers.contains(.option)
+            else { return event }
+
+            guard !model.workspaces.isEmpty else { return event }
+            let offset = modifiers.contains(.shift) ? -1 : 1
+            Task { @MainActor in
+                model.selectRelativeWorkspace(by: offset)
+            }
+            return nil
+        }
+
+        terminalInputMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal" else {
+                return
+            }
+
+            let isPaste = event.modifierFlags.contains(.command) && event.keyCode == 9
+            let terminalEvent = TerminalKeyEvent(
+                keyCode: event.keyCode,
+                characters: event.characters ?? "",
+                modifierRawValue: event.modifierFlags.rawValue,
+                pasteboardText: isPaste ? NSPasteboard.general.string(forType: .string) : nil
+            )
+
+            Task { @MainActor [weak model] in
+                model?.handleTerminalKeyEvent(terminalEvent)
+            }
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         if let keyboardMonitor {
             NSEvent.removeMonitor(keyboardMonitor)
+        }
+        if let workspaceSwitchMonitor {
+            NSEvent.removeMonitor(workspaceSwitchMonitor)
+        }
+        if let terminalInputMonitor {
+            NSEvent.removeMonitor(terminalInputMonitor)
         }
     }
 }
@@ -611,7 +749,7 @@ final class FloatingButtonController {
 
         if panel == nil {
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 44, height: 44),
+                contentRect: NSRect(x: 0, y: 0, width: 32, height: 32),
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
@@ -619,7 +757,7 @@ final class FloatingButtonController {
             panel.level = .floating
             panel.isOpaque = false
             panel.backgroundColor = .clear
-            panel.hasShadow = true
+            panel.hasShadow = false
             panel.contentView = NSHostingView(rootView: FloatingButton(model: model))
             self.panel = panel
         }
@@ -629,12 +767,22 @@ final class FloatingButtonController {
             return
         }
 
-        let buttonSize: CGFloat = 44
-        let horizontalInset: CGFloat = 12
-        let verticalInset: CGFloat = 16
+        let buttonSize: CGFloat = 32
+        let horizontalInset: CGFloat = 10
+        let verticalInset: CGFloat = 12
+        let screen = NSScreen.screens.first { screen in
+            let appKitWindowBottom = screen.frame.maxY - windowFrame.maxY
+            return screen.frame.contains(NSPoint(x: windowFrame.minX, y: appKitWindowBottom))
+        } ?? NSScreen.main
+
+        guard let screen else {
+            panel?.orderOut(nil)
+            return
+        }
+
         panel?.setFrameOrigin(NSPoint(
             x: windowFrame.maxX - buttonSize - horizontalInset,
-            y: windowFrame.minY + verticalInset
+            y: screen.frame.maxY - windowFrame.maxY + verticalInset
         ))
         panel?.orderFrontRegardless()
     }
@@ -647,11 +795,16 @@ struct FloatingButton: View {
         Button {
             model.captureActiveTerminalSession()
         } label: {
-            Image(systemName: "text.bubble.fill")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(.blue.gradient, in: Circle())
+            Image(systemName: "text.bubble")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.86))
+                .frame(width: 32, height: 32)
+                .background(.black.opacity(0.48), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
+                }
+                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
         }
         .buttonStyle(.plain)
         .help("Abrir Prompt Viz")
@@ -663,6 +816,32 @@ struct ContentView: View {
     @State private var snippetSearch = ""
     @State private var showingSnippetEditor = false
     @State private var editingSnippet: Snippet?
+
+    private var composerTitle: String {
+        let title = model.selectedWorkspace?.title ?? "Prompt Viz"
+        return String(title.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: true).first ?? Substring(title))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func workspaceDisplayParts(for title: String) -> (repository: String, chat: String?) {
+        let withoutSuffix = title
+            .components(separatedBy: "|")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? title
+        let parts = withoutSuffix.components(separatedBy: " — ")
+
+        guard let repository = parts.first else {
+            return (withoutSuffix, nil)
+        }
+
+        let chat = parts.dropFirst().joined(separator: " — ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return (
+            repository.trimmingCharacters(in: .whitespacesAndNewlines),
+            chat.isEmpty ? nil : chat
+        )
+    }
 
     private var visibleSnippets: [Snippet] {
         model.snippetLibrary.search(snippetSearch)
@@ -728,17 +907,25 @@ struct ContentView: View {
                     Button {
                         model.select(workspace)
                     } label: {
+                        let displayParts = workspaceDisplayParts(for: workspace.title)
+
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(workspace.title)
+                            Text(displayParts.repository)
+                                .font(.callout.weight(.medium))
                                 .lineLimit(1)
-                            Text(workspace.draft.isEmpty ? "Sem rascunho" : workspace.draft)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
+                            if let chat = displayParts.chat {
+                                Text(chat)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                     .listRowBackground(
                         model.selectedWorkspaceID == workspace.id ? Color.accentColor.opacity(0.14) : .clear
                     )
@@ -755,13 +942,8 @@ struct ContentView: View {
     private var composer: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(model.selectedWorkspace?.title ?? "Prompt Viz")
-                        .font(.title2.weight(.semibold))
-                    Text(model.selectedWorkspace == nil ? "Nenhum tab selecionado" : "Prompt local")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text(composerTitle)
+                    .font(.title2.weight(.semibold))
 
                 Spacer()
 
@@ -776,7 +958,10 @@ struct ContentView: View {
 
             Divider()
 
-            PromptTextEditor(text: $model.editorText, insertionRequest: $model.insertionRequest)
+            PromptTextEditor(
+                text: $model.editorText,
+                insertionRequest: $model.insertionRequest
+            )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(12)
 

@@ -12,11 +12,12 @@ Este documento transforma a [visão atual](vision.md) num plano de implementaç�
 - A biblioteca de snippets é persistida localmente em `UserDefaults`.
 - A shell SwiftUI está implementada com menu bar, janela principal, editor, lista de workspaces e editor de snippets/templates.
 - O adapter de automação do Terminal.app está implementado com identificação da app ativa, clipboard, `Cmd+V`, `Return` e pedido de Acessibilidade.
-- O botão flutuante é ancorado à janela ativa do Terminal.app, junto ao fim da linha de escrita, e acompanha alterações de janela, tab e dimensão.
+- O botão flutuante é discreto, ancorado à janela ativa do Terminal.app, junto ao fim da linha de escrita, e acompanha alterações de janela, tab e dimensão.
 - O empacotamento local usa a identidade Apple Development disponível neste Mac, em vez de assinatura ad-hoc, para manter estável a autorização de Acessibilidade entre builds.
 - Os nove primeiros snippets favoritos têm atalhos `⌘⌥1`–`⌘⌥9`.
 - A associação de janelas usa o `CGWindowID` e a app verifica periodicamente se as janelas ainda existem, removendo o workspace quando uma janela fecha.
 - A sessão focada usa o `CGWindowID` da janela do Terminal, obtido ao cruzar a janela AX com a lista de janelas do processo; se essa informação não estiver disponível, mantém-se o fallback por processo para permitir testar o envio.
+- A sincronização Terminal → editor usa um hook opcional de `zsh` (`scripts/prompt-viz-zsh.zsh`) que publica o `BUFFER` por TTY em `/tmp/prompt-viz`; a app associa esse TTY ao workspace através do dicionário AppleScript do Terminal.app.
 
 O executável pode ser empacotado como `dist/PromptViz.app` através de `scripts/build-app.sh`.
 
@@ -94,6 +95,7 @@ A integração de Acessibilidade para envio, a estabilidade do identificador de 
 ## Riscos e limites
 
 - Acessibilidade é necessária para automatizar o Terminal.app.
+- A sincronização em tempo real requer a integração `zsh` instalada e autorização de Automação para ler o TTY do Terminal.app.
 - A app não consegue garantir semanticamente que o Codex está pronto para receber input.
 - Alterar título ou estrutura de tabs pode afetar a identificação da sessão; o adapter deve encapsular essa instabilidade.
 - O envio deve falhar de forma explícita se não houver Terminal.app ou uma sessão-alvo válida.
