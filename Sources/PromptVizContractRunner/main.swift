@@ -15,8 +15,9 @@ struct PromptVizContractRunner {
             try templateContracts()
             try workspaceContracts()
             try terminalInputRoutingContracts()
+            try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (13 checks)")
+            print("PromptViz contracts: PASS (16 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -85,6 +86,28 @@ struct PromptVizContractRunner {
         try check(
             !TerminalInputRouting.shouldMirror(selectedTTY: nil, observedTTY: "/dev/ttys001"),
             "input is ignored without an associated workspace"
+        )
+    }
+
+    private static func skillManifestContracts() throws {
+        let manifest = """
+        ---
+        name: "example-skill"
+        description: "A skill for testing discovery."
+        ---
+        # Example
+        """
+        let skill = SkillManifestParser.parse(
+            manifest,
+            fallbackName: "fallback",
+            sourcePath: "/tmp/example/SKILL.md"
+        )
+
+        try check(skill?.name == "example-skill", "skill name is read from frontmatter")
+        try check(skill?.description == "A skill for testing discovery.", "skill description is read from frontmatter")
+        try check(
+            SkillManifestParser.parse("# Not a skill", fallbackName: "fallback", sourcePath: "/tmp/nope") == nil,
+            "files without frontmatter are ignored"
         )
     }
 }

@@ -10,14 +10,15 @@ Este documento transforma a [visão atual](vision.md) num plano de implementaç�
 - `WorkspaceStore` cria/reutiliza workspaces por sessão, mantém rascunhos separados e remove workspaces fechados.
 - `SnippetLibrary` fornece snippets globais, favoritos, pesquisa e operações de edição.
 - A biblioteca de snippets é persistida localmente em `UserDefaults`.
-- A shell SwiftUI está implementada com menu bar, janela principal, editor, lista de workspaces e editor de snippets/templates.
+- A shell SwiftUI está implementada com menu bar, janela principal, tabs nativas de workspaces, editor e editor de snippets/templates.
 - O adapter de automação do Terminal.app está implementado com identificação da app ativa, clipboard, `Cmd+V`, `Return` e pedido de Acessibilidade.
-- O botão flutuante é discreto, ancorado à janela ativa do Terminal.app, junto ao fim da linha de escrita, e acompanha alterações de janela, tab e dimensão.
+- O compositor pode ser aberto com `⌘E` ou pelo item do Prompt Viz na menu bar; não há UI persistente sobre as janelas do Terminal.app.
 - O empacotamento local usa a identidade Apple Development disponível neste Mac, em vez de assinatura ad-hoc, para manter estável a autorização de Acessibilidade entre builds.
 - Os nove primeiros snippets favoritos têm atalhos `⌘⌥1`–`⌘⌥9`.
 - A associação de janelas usa o `CGWindowID` e a app verifica periodicamente se as janelas ainda existem, removendo o workspace quando uma janela fecha.
 - A sessão focada usa o `CGWindowID` da janela do Terminal, obtido ao cruzar a janela AX com a lista de janelas do processo; se essa informação não estiver disponível, mantém-se o fallback por processo para permitir testar o envio.
 - A sincronização Terminal → editor usa um hook opcional de `zsh` (`scripts/prompt-viz-zsh.zsh`) que publica o `BUFFER` por TTY em `/tmp/prompt-viz`; a app associa esse TTY ao workspace através do dicionário AppleScript do Terminal.app.
+- O catálogo de skills é read-only: descobre manifests `SKILL.md`, expõe nome e descrição no compositor e insere apenas a invocação `$skill-name`, deixando o carregamento para o Codex.
 
 O executável pode ser empacotado como `dist/PromptViz.app` através de `scripts/build-app.sh`.
 
@@ -47,8 +48,8 @@ Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos pront
 
 ## Fronteiras SwiftUI/AppKit
 
-- **SwiftUI:** janela principal, lista lateral de workspaces, editor, snippets, templates, estados e comandos.
-- **AppKit/Foundation:** menu bar, janela/painel flutuante, observação da app ativa, Acessibilidade do Terminal.app, clipboard e eventos de teclado.
+- **SwiftUI:** janela principal, tabs nativas de workspaces, editor, snippets, templates, estados e comandos.
+- **AppKit/Foundation:** menu bar, observação da app ativa, Acessibilidade do Terminal.app, clipboard e eventos de teclado.
 - **Domínio puro:** modelos, store, pesquisa e expansão de templates.
 
 A UI apresenta estado e envia comandos; não deve chamar diretamente `AXUIElement`, escrever na clipboard ou sintetizar teclas.

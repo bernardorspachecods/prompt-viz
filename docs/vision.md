@@ -31,7 +31,7 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 ### Workspaces e sessões
 
 - Existe um workspace por tab/sessão do Terminal.app.
-- Uma única janela da app apresenta os workspaces numa lista lateral.
+- Uma única janela da app apresenta os workspaces numa barra nativa de tabs do macOS.
 - Cada workspace mantém o seu próprio rascunho.
 - `Ctrl+Tab` avança entre workspaces e `Ctrl+Shift+Tab` volta ao anterior.
 - A linha atualmente escrita no `zsh` do tab ativo é sincronizada em tempo real para o editor do workspace correspondente.
@@ -44,6 +44,7 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 - A biblioteca de snippets é global e está disponível em todos os workspaces.
 - O utilizador pode criar, editar, apagar e organizar os seus snippets.
 - Snippets podem ser texto fixo ou templates com campos `{{nome}}`.
+- Ao escrever `$`, o compositor apresenta as skills locais do Codex para pesquisa e seleção.
 - Os campos são preenchidos e percorridos com `Tab`.
 - Os snippets favoritos aparecem numa barra compacta.
 - O restante catálogo pode ser pesquisado numa paleta.

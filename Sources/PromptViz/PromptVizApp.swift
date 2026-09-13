@@ -13,6 +13,17 @@ struct TextInsertionRequest: Equatable, Identifiable {
     let text: String
 }
 
+struct SkillHighlightRequest: Equatable, Identifiable {
+    let id = UUID()
+    let range: NSRange
+}
+
+enum SkillKeyboardAction {
+    case moveUp
+    case moveDown
+    case choose
+}
+
 struct TerminalSession: Equatable, Identifiable {
     let id: String
     let title: String
@@ -348,27 +359,34 @@ final class PromptVizModel: ObservableObject {
 
     @Published private(set) var workspaces: [Workspace] = []
     @Published private(set) var snippets: [Snippet] = []
+    @Published private(set) var skills: [SkillDescriptor] = []
     @Published var selectedWorkspaceID: UUID?
     @Published var editorText = ""
     @Published var insertionRequest: TextInsertionRequest?
+    @Published var editorCursorLocationRequest: Int?
+    @Published var skillHighlightRequest: SkillHighlightRequest?
     @Published var templateToFill: Snippet?
     @Published var errorMessage: String?
     @Published var shouldOfferAccessibilitySettings = false
     @Published var shouldOfferAutomationSettings = false
     @Published var isMainWindowVisible = false
     var openMainWindowHandler: (() -> Void)?
+    var workspacesDidChangeHandler: (() -> Void)?
 
     let workspaceStore = WorkspaceStore()
     let snippetLibrary: SnippetLibrary
     let terminalAutomation = TerminalAutomation()
     private let snippetPersistence = LocalSnippetPersistence()
+    let skillCatalog = SkillCatalog()
     private let terminalInputSync = TerminalInputSyncController()
     private let terminalKeyMirror = TerminalKeyMirror()
     private var workspaceMonitor: Timer?
+    private var skillMonitor: Timer?
     private(set) var activeSession: TerminalSession?
 
     private init() {
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
+        skills = skillCatalog.scan()
         terminalInputSync.onBufferChanged = { [weak self] buffer in
             self?.applyTerminalInput(buffer)
         }
@@ -380,6 +398,11 @@ final class PromptVizModel: ObservableObject {
         workspaceMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.pruneClosedWorkspaces()
+            }
+        }
+        skillMonitor = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refreshSkills()
             }
         }
     }
@@ -451,6 +474,36 @@ final class PromptVizModel: ObservableObject {
         select(workspaces[nextIndex])
     }
 
+    func closeWorkspace(id: UUID) {
+        workspaceStore.removeWorkspace(id: id)
+
+        guard selectedWorkspaceID == id else {
+            sync()
+            return
+        }
+
+        if let nextWorkspace = workspaceStore.workspaces.first {
+            selectedWorkspaceID = nextWorkspace.id
+            editorText = nextWorkspace.draft
+            activeSession = TerminalSession(
+                id: nextWorkspace.terminalSessionID,
+                title: nextWorkspace.title,
+                processIdentifier: nextWorkspace.terminalSessionID.split(separator: ":").first.flatMap { pid_t($0) } ?? 0,
+                tty: nextWorkspace.terminalTTY
+            )
+            terminalKeyMirror.reset(buffer: editorText, for: nextWorkspace.terminalTTY)
+            terminalInputSync.select(tty: nextWorkspace.terminalTTY)
+        } else {
+            selectedWorkspaceID = nil
+            activeSession = nil
+            editorText = ""
+            terminalKeyMirror.reset(buffer: "")
+            terminalInputSync.select(tty: nil)
+        }
+
+        sync()
+    }
+
     func updateEditorText(_ text: String) {
         editorText = text
         saveCurrentDraft()
@@ -462,6 +515,27 @@ final class PromptVizModel: ObservableObject {
             insertionRequest = TextInsertionRequest(text: snippet.body)
         } else {
             templateToFill = snippet
+        }
+    }
+
+    func selectSkill(_ skill: SkillDescriptor) {
+        let invocation = "$" + skill.name + " "
+        let expression = #"\$[A-Za-z0-9_-]*$"#
+
+        if let range = editorText.range(of: expression, options: .regularExpression) {
+            let tokenRange = NSRange(range, in: editorText)
+            editorText.replaceSubrange(range, with: invocation)
+            editorCursorLocationRequest = (editorText as NSString).length
+            skillHighlightRequest = SkillHighlightRequest(
+                range: NSRange(
+                    location: tokenRange.location,
+                    length: invocation.dropLast().utf16.count
+                )
+            )
+            saveCurrentDraft()
+            sync()
+        } else {
+            insertionRequest = TextInsertionRequest(text: invocation)
         }
     }
 
@@ -531,6 +605,11 @@ final class PromptVizModel: ObservableObject {
     private func sync() {
         workspaces = workspaceStore.workspaces
         snippets = snippetLibrary.snippets
+        workspacesDidChangeHandler?()
+    }
+
+    private func refreshSkills() {
+        skills = skillCatalog.scan()
     }
 
     private func pruneClosedWorkspaces() {
@@ -611,7 +690,6 @@ struct PromptVizApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
-    private var floatingButton: FloatingButtonController?
     private var keyboardMonitor: Any?
     private var workspaceSwitchMonitor: Any?
     private var terminalInputMonitor: Any?
@@ -622,8 +700,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.openMainWindowHandler = { [weak self] in
             self?.mainWindowController?.show()
         }
-        floatingButton = FloatingButtonController(model: model)
-        floatingButton?.start()
+        model.workspacesDidChangeHandler = { [weak self] in
+            self?.mainWindowController?.reconcileWindows()
+        }
 
         keyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
             guard
@@ -647,8 +726,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
             guard !model.workspaces.isEmpty else { return event }
             let offset = modifiers.contains(.shift) ? -1 : 1
-            Task { @MainActor in
-                model.selectRelativeWorkspace(by: offset)
+            Task { @MainActor [weak self] in
+                self?.mainWindowController?.selectRelativeTab(by: offset)
             }
             return nil
         }
@@ -686,136 +765,129 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-final class MainWindowController {
-    private let window: NSWindow
+final class MainWindowController: NSObject, NSWindowDelegate {
+    private let model: PromptVizModel
+    private var windowsByWorkspaceID: [UUID: NSWindow] = [:]
 
     init(model: PromptVizModel) {
-        window = NSWindow(
+        self.model = model
+        super.init()
+    }
+
+    func reconcileWindows() {
+        let workspaceIDs = Set(model.workspaces.map(\.id))
+
+        for (workspaceID, window) in windowsByWorkspaceID where !workspaceIDs.contains(workspaceID) {
+            windowsByWorkspaceID.removeValue(forKey: workspaceID)
+            window.delegate = nil
+            window.close()
+        }
+
+        for workspace in model.workspaces where windowsByWorkspaceID[workspace.id] == nil {
+            createWindow(for: workspace)
+        }
+    }
+
+    func show() {
+        reconcileWindows()
+
+        guard
+            let selectedWorkspaceID = model.selectedWorkspaceID,
+            let window = windowsByWorkspaceID[selectedWorkspaceID]
+        else { return }
+
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func selectRelativeTab(by offset: Int) {
+        guard
+            let window = NSApp.keyWindow,
+            let tabGroup = window.tabGroup,
+            tabGroup.windows.count > 1
+        else { return }
+
+        if offset < 0 {
+            window.selectPreviousTab(nil)
+        } else {
+            window.selectNextTab(nil)
+        }
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        activateWorkspace(for: notification)
+    }
+
+    func windowDidBecomeMain(_ notification: Notification) {
+        activateWorkspace(for: notification)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        guard
+            let window = notification.object as? NSWindow,
+            let workspaceID = workspaceID(for: window)
+        else { return }
+
+        windowsByWorkspaceID.removeValue(forKey: workspaceID)
+        model.closeWorkspace(id: workspaceID)
+    }
+
+    private func createWindow(for workspace: Workspace) {
+        let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 980, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "Prompt Viz · \(PromptVizBuild.label)"
+        window.title = tabTitle(for: workspace.title)
+        window.tabbingIdentifier = "com.promptviz.workspace"
+        window.tabbingMode = .preferred
         window.minSize = NSSize(width: 760, height: 500)
         window.contentView = NSHostingView(
             rootView: ContentView(model: model)
                 .frame(minWidth: 760, minHeight: 500)
         )
-        window.center()
+        window.delegate = self
         window.isReleasedWhenClosed = false
+
+        if let existingWindow = windowsByWorkspaceID.values.first {
+            existingWindow.addTabbedWindow(window, ordered: .above)
+        } else {
+            window.center()
+        }
+
+        windowsByWorkspaceID[workspace.id] = window
     }
 
-    func show() {
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+    private func activateWorkspace(for notification: Notification) {
+        guard
+            let window = notification.object as? NSWindow,
+            let workspaceID = workspaceID(for: window),
+            let workspace = model.workspaces.first(where: { $0.id == workspaceID }),
+            model.selectedWorkspaceID != workspaceID
+        else { return }
+
+        model.select(workspace)
+    }
+
+    private func workspaceID(for window: NSWindow) -> UUID? {
+        windowsByWorkspaceID.first { $0.value === window }?.key
+    }
+
+    private func tabTitle(for title: String) -> String {
+        String(title.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: true).first ?? Substring(title))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
 @MainActor
-final class FloatingButtonController {
-    private let model: PromptVizModel
-    private var panel: NSPanel?
-    private var observer: NSObjectProtocol?
-    private var refreshTimer: Timer?
-
-    init(model: PromptVizModel) {
-        self.model = model
-    }
-
-    func start() {
-        observer = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.didActivateApplicationNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.refresh()
-            }
-        }
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.refresh()
-            }
-        }
-        refresh()
-    }
-
-    private func refresh() {
-        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal" else {
-            panel?.orderOut(nil)
-            return
-        }
-
-        if panel == nil {
-            let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 32, height: 32),
-                styleMask: [.borderless, .nonactivatingPanel],
-                backing: .buffered,
-                defer: false
-            )
-            panel.level = .floating
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = false
-            panel.contentView = NSHostingView(rootView: FloatingButton(model: model))
-            self.panel = panel
-        }
-
-        guard let windowFrame = model.terminalAutomation.activeTerminalWindowFrame() else {
-            panel?.orderOut(nil)
-            return
-        }
-
-        let buttonSize: CGFloat = 32
-        let horizontalInset: CGFloat = 10
-        let verticalInset: CGFloat = 12
-        let screen = NSScreen.screens.first { screen in
-            let appKitWindowBottom = screen.frame.maxY - windowFrame.maxY
-            return screen.frame.contains(NSPoint(x: windowFrame.minX, y: appKitWindowBottom))
-        } ?? NSScreen.main
-
-        guard let screen else {
-            panel?.orderOut(nil)
-            return
-        }
-
-        panel?.setFrameOrigin(NSPoint(
-            x: windowFrame.maxX - buttonSize - horizontalInset,
-            y: screen.frame.maxY - windowFrame.maxY + verticalInset
-        ))
-        panel?.orderFrontRegardless()
-    }
-}
-
-struct FloatingButton: View {
-    @ObservedObject var model: PromptVizModel
-
-    var body: some View {
-        Button {
-            model.captureActiveTerminalSession()
-        } label: {
-            Image(systemName: "text.bubble")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.white.opacity(0.86))
-                .frame(width: 32, height: 32)
-                .background(.black.opacity(0.48), in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(.white.opacity(0.18), lineWidth: 0.5)
-                }
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-        }
-        .buttonStyle(.plain)
-        .help("Abrir Prompt Viz")
-    }
-}
-
 struct ContentView: View {
     @ObservedObject var model: PromptVizModel
     @State private var snippetSearch = ""
     @State private var showingSnippetEditor = false
     @State private var editingSnippet: Snippet?
+    @State private var hoveredSkillID: String?
+    @State private var selectedSkillIndex = -1
 
     private var composerTitle: String {
         let title = model.selectedWorkspace?.title ?? "Prompt Viz"
@@ -847,12 +919,23 @@ struct ContentView: View {
         model.snippetLibrary.search(snippetSearch)
     }
 
+    private var activeSkillQuery: String? {
+        guard let range = model.editorText.range(
+            of: #"\$[A-Za-z0-9_-]*$"#,
+            options: .regularExpression
+        ) else { return nil }
+
+        return String(model.editorText[range].dropFirst())
+    }
+
+    private var visibleSkills: [SkillDescriptor] {
+        model.skillCatalog.search(activeSkillQuery ?? "", in: model.skills)
+            .prefix(6)
+            .map { $0 }
+    }
+
     var body: some View {
-        HStack(spacing: 0) {
-            workspaceSidebar
-            Divider()
-            composer
-        }
+        composer
         .sheet(item: $model.templateToFill) { snippet in
             TemplateFillSheet(snippet: snippet) { values in
                 model.applyTemplate(snippet, values: values)
@@ -891,148 +974,252 @@ struct ContentView: View {
         }
     }
 
-    private var workspaceSidebar: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Workspaces", systemImage: "rectangle.split.3x1")
-                .font(.headline)
-                .padding(.horizontal, 14)
+    private var composer: some View {
+        HStack(spacing: 0) {
+            snippetSidebar
 
-            if model.workspaces.isEmpty {
-                Text("Abre um tab do Terminal.app e usa o botão flutuante.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 14)
-            } else {
-                List(model.workspaces) { workspace in
-                    Button {
-                        model.select(workspace)
-                    } label: {
-                        let displayParts = workspaceDisplayParts(for: workspace.title)
+            Divider()
 
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(displayParts.repository)
-                                .font(.callout.weight(.medium))
-                                .lineLimit(1)
-                            if let chat = displayParts.chat {
-                                Text(chat)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
+            VStack(alignment: .leading, spacing: 0) {
+                HStack {
+                    Text(composerTitle)
+                        .font(.title2.weight(.semibold))
+
+                    Spacer()
+
+                    Button("Enviar") {
+                        model.send()
                     }
-                    .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .listRowBackground(
-                        model.selectedWorkspaceID == workspace.id ? Color.accentColor.opacity(0.14) : .clear
-                    )
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .listStyle(.sidebar)
-            }
+                .padding(18)
 
-            Spacer()
+                Divider()
+
+                ZStack(alignment: .topLeading) {
+                    PromptTextEditor(
+                        text: $model.editorText,
+                        insertionRequest: $model.insertionRequest,
+                        cursorLocationRequest: $model.editorCursorLocationRequest,
+                        skillHighlightRequest: $model.skillHighlightRequest,
+                        onSkillKeyboardAction: handleSkillKeyboardAction
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    if activeSkillQuery != nil && !visibleSkills.isEmpty {
+                        skillSuggestions
+                            .padding(.top, 58)
+                            .padding(.leading, 14)
+                    }
+                }
+                .padding(12)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 230)
-        .padding(.top, 16)
     }
 
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    private var snippetSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text(composerTitle)
-                    .font(.title2.weight(.semibold))
+                Label("Snippets", systemImage: "text.quote")
+                    .font(.headline)
 
                 Spacer()
 
-                Button("Enviar") {
-                    model.send()
+                Button {
+                    editingSnippet = nil
+                    showingSnippetEditor = true
+                } label: {
+                    Image(systemName: "plus")
                 }
-                .keyboardShortcut(.return, modifiers: [.command])
-                .buttonStyle(.borderedProminent)
-                .disabled(model.editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(.borderless)
+                .help("Novo snippet")
             }
-            .padding(18)
 
-            Divider()
+            TextField("Pesquisar", text: $snippetSearch)
+                .textFieldStyle(.roundedBorder)
 
-            PromptTextEditor(
-                text: $model.editorText,
-                insertionRequest: $model.insertionRequest
-            )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(12)
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !model.snippetLibrary.favorites.isEmpty {
+                        Text("Favoritos")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
 
-            Divider()
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Snippets")
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        editingSnippet = nil
-                        showingSnippetEditor = true
-                    } label: {
-                        Label("Novo", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderless)
-                }
-
-                HStack {
-                    ForEach(Array(model.snippetLibrary.favorites.prefix(9).enumerated()), id: \.element.id) { index, snippet in
-                        Button(snippet.title) { model.insert(snippet) }
-                            .buttonStyle(.bordered)
-                            .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: [.command, .option])
-                    }
-                    Spacer()
-                    TextField("Pesquisar snippets", text: $snippetSearch)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 190)
-                }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack {
-                        ForEach(visibleSnippets) { snippet in
-                            HStack(spacing: 4) {
-                                Button(snippet.title) { model.insert(snippet) }
-                                    .buttonStyle(.borderless)
-                                Button {
-                                    editingSnippet = snippet
-                                    showingSnippetEditor = true
-                                } label: {
-                                    Image(systemName: "pencil")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Editar snippet")
-                                Button {
-                                    model.removeSnippet(snippet)
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(.borderless)
-                                .help("Apagar snippet")
+                        ForEach(Array(model.snippetLibrary.favorites.prefix(9).enumerated()), id: \.element.id) { index, snippet in
+                            Button {
+                                model.insert(snippet)
+                            } label: {
+                                Label(snippet.title, systemImage: "star.fill")
+                                    .lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(.quaternary, in: Capsule())
+                            .buttonStyle(.bordered)
+                            .keyboardShortcut(
+                                KeyEquivalent(Character(String(index + 1))),
+                                modifiers: [.command, .option]
+                            )
+                        }
+                    }
+
+                    if !visibleSnippets.isEmpty {
+                        Divider()
+
+                        Text("Todos")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(visibleSnippets) { snippet in
+                            snippetRow(snippet)
                         }
                     }
                 }
             }
-            .padding(14)
         }
+        .padding(14)
+        .frame(
+            minWidth: 250,
+            idealWidth: 250,
+            maxWidth: 250,
+            maxHeight: .infinity,
+            alignment: .top
+        )
+        .background(.quaternary.opacity(0.18))
+    }
+
+    private func snippetRow(_ snippet: Snippet) -> some View {
+        HStack(spacing: 4) {
+            Button {
+                model.insert(snippet)
+            } label: {
+                Text(snippet.title)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                editingSnippet = snippet
+                showingSnippetEditor = true
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .buttonStyle(.borderless)
+            .help("Editar snippet")
+
+            Button {
+                model.removeSnippet(snippet)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Apagar snippet")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+    }
+
+    private var skillSuggestions: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Label("Skills", systemImage: "sparkles")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(visibleSkills.enumerated()), id: \.element.id) { index, skill in
+                        Button {
+                            hoveredSkillID = nil
+                            selectedSkillIndex = index
+                            model.selectSkill(skill)
+                        } label: {
+                            HStack(alignment: .top, spacing: 8) {
+                                Image(systemName: "sparkles")
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(Color.accentColor)
+                                    .frame(width: 16)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("$" + skill.name)
+                                        .font(.callout.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    if !skill.description.isEmpty {
+                                        Text(skill.description)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(
+                            hoveredSkillID == skill.id || selectedSkillIndex == index
+                                ? Color.accentColor.opacity(0.18)
+                                : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 6)
+                        )
+                        .onHover { isHovered in
+                            hoveredSkillID = isHovered ? skill.id : nil
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 220)
+        }
+        .frame(maxWidth: 500, alignment: .leading)
+        .padding(6)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .stroke(.primary.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
+    }
+
+    private func handleSkillKeyboardAction(_ action: SkillKeyboardAction) -> Bool {
+        guard !visibleSkills.isEmpty, activeSkillQuery != nil else { return false }
+
+        switch action {
+        case .moveDown:
+            selectedSkillIndex = selectedSkillIndex < 0
+                ? 0
+                : (selectedSkillIndex + 1) % visibleSkills.count
+        case .moveUp:
+            selectedSkillIndex = selectedSkillIndex < 0
+                ? visibleSkills.count - 1
+                : (selectedSkillIndex - 1 + visibleSkills.count) % visibleSkills.count
+        case .choose:
+            let index = selectedSkillIndex < 0
+                ? 0
+                : min(selectedSkillIndex, visibleSkills.count - 1)
+            let skill = visibleSkills[index]
+            model.selectSkill(skill)
+            selectedSkillIndex = -1
+        }
+
+        return true
     }
 }
 
 struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var insertionRequest: TextInsertionRequest?
+    @Binding var cursorLocationRequest: Int?
+    @Binding var skillHighlightRequest: SkillHighlightRequest?
+    let onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
+        Coordinator(text: $text, onSkillKeyboardAction: onSkillKeyboardAction)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -1055,11 +1242,49 @@ struct PromptTextEditor: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.onSkillKeyboardAction = onSkillKeyboardAction
 
         if textView.string != text {
             let location = min(textView.selectedRange().location, text.utf16.count)
             textView.string = text
             textView.setSelectedRange(NSRange(location: location, length: 0))
+        }
+
+        if let cursorLocationRequest {
+            let location = min(max(0, cursorLocationRequest), (textView.string as NSString).length)
+            textView.setSelectedRange(NSRange(location: location, length: 0))
+            DispatchQueue.main.async {
+                guard self.cursorLocationRequest == cursorLocationRequest else { return }
+                self.cursorLocationRequest = nil
+            }
+        }
+
+        if let skillHighlightRequest,
+           context.coordinator.lastSkillHighlightID != skillHighlightRequest.id {
+            let textLength = (textView.string as NSString).length
+            let location = min(max(0, skillHighlightRequest.range.location), textLength)
+            let length = min(
+                max(0, skillHighlightRequest.range.length),
+                textLength - location
+            )
+
+            if length > 0 {
+                textView.textStorage?.addAttributes([
+                    .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
+                    .foregroundColor: NSColor.controlAccentColor
+                ], range: NSRange(location: location, length: length))
+                textView.typingAttributes = [
+                    .font: NSFont.systemFont(ofSize: 15),
+                    .foregroundColor: NSColor.labelColor
+                ]
+            }
+
+            context.coordinator.lastSkillHighlightID = skillHighlightRequest.id
+            let requestID = skillHighlightRequest.id
+            DispatchQueue.main.async {
+                guard self.skillHighlightRequest?.id == requestID else { return }
+                self.skillHighlightRequest = nil
+            }
         }
 
         guard
@@ -1088,14 +1313,36 @@ struct PromptTextEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         var lastInsertionID: UUID?
+        var lastSkillHighlightID: UUID?
+        var onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
 
-        init(text: Binding<String>) {
+        init(
+            text: Binding<String>,
+            onSkillKeyboardAction: @escaping (SkillKeyboardAction) -> Bool
+        ) {
             _text = text
+            self.onSkillKeyboardAction = onSkillKeyboardAction
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             text = textView.string
+        }
+
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            switch NSStringFromSelector(commandSelector) {
+            case "moveDown:":
+                return onSkillKeyboardAction(.moveDown)
+            case "moveUp:":
+                return onSkillKeyboardAction(.moveUp)
+            case "insertNewline:":
+                if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
+                    return false
+                }
+                return onSkillKeyboardAction(.choose)
+            default:
+                return false
+            }
         }
     }
 }
