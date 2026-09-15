@@ -22,6 +22,12 @@ O utilizador pode escrever diretamente no editor ou inserir um snippet da barra
 Ao escrever `$`, o editor mostra as skills encontradas localmente. As sugestões
 podem ser escolhidas com o rato, `↑`, `↓` e `Return`.
 
+Ao premir `⌥V` com uma imagem no clipboard, a app insere uma referência
+`[Image #N]` na posição do cursor e guarda o anexo correspondente. `⌘V` mantém
+o paste normal de texto. As referências de imagem e as skills aparecem com a
+cor de acento nativa do macOS; apagar ou substituir qualquer parte remove ou
+substitui o token completo.
+
 ## Alternar workspace
 
 Selecionar uma tab da janela da app guarda o rascunho atual, muda o editor para
@@ -35,6 +41,10 @@ Terminal.app. `Ctrl+Tab` avança e `Ctrl+Shift+Tab` recua.
 3. A app valida que a sessão selecionada continua a ser a esperada.
 4. O conteúdo é colado no compositor do Codex e `Return` é enviado.
 5. Após um envio bem-sucedido, o rascunho do workspace é limpo.
+6. O prompt enviado é acrescentado ao histórico local.
+
+Quando existem imagens, o texto e cada anexo são colados pela ordem em que
+aparecem no prompt antes de `Return` ser enviado.
 
 O botão fica indisponível quando o editor contém apenas espaços ou linhas
 vazias.
@@ -44,3 +54,15 @@ vazias.
 Fechar a tab da app remove o workspace correspondente. A aplicação também
 observa periodicamente as sessões do Terminal.app e remove workspaces apenas
 depois de confirmar que a sessão deixou de existir.
+
+## Recuperar um prompt do histórico
+
+1. O utilizador pesquisa opcionalmente pelo texto do prompt ou pelo nome da
+   sessão.
+2. Seleciona uma entrada do histórico.
+3. A app carrega o prompt no editor atual e coloca o cursor no fim.
+4. O utilizador pode editar e enviar o prompt novamente, incluindo os anexos de
+   imagem guardados.
+
+Uma entrada individual pode ser apagada pelo botão correspondente. O histórico
+completo pede confirmação antes de ser limpo.

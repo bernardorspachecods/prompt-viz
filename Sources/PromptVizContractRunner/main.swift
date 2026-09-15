@@ -16,7 +16,10 @@ struct PromptVizContractRunner {
             try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-        print("PromptViz contracts: PASS (28 checks)")
+            try promptHistoryContracts()
+            try promptImageContracts()
+            try promptEditorTokenContracts()
+        print("PromptViz contracts: PASS (43 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -139,6 +142,138 @@ struct PromptVizContractRunner {
         try check(
             library.snippets.map(\.title) == ["Sem bias", "Sê honesto"],
             "moving a template to a slot changes template order"
+        )
+    }
+
+    private static func promptHistoryContracts() throws {
+        let history = PromptHistoryStore(limit: 2)
+        let first = history.add(
+            prompt: "Primeiro prompt",
+            sessionTitle: "projeto-a",
+            sentAt: Date(timeIntervalSince1970: 100)
+        )
+        _ = history.add(
+            prompt: "Segundo prompt",
+            sessionTitle: "projeto-b",
+            sentAt: Date(timeIntervalSince1970: 200)
+        )
+        _ = history.add(
+            prompt: "Terceiro prompt",
+            sessionTitle: "projeto-a",
+            sentAt: Date(timeIntervalSince1970: 300)
+        )
+
+        try check(
+            history.entries.map(\.prompt) == ["Terceiro prompt", "Segundo prompt"],
+            "prompt history keeps newest entries first and respects its limit"
+        )
+        try check(
+            history.search("PROJETO-A").map(\.prompt) == ["Terceiro prompt"],
+            "prompt history searches prompt and session title case-insensitively"
+        )
+
+        history.remove(id: first.id)
+        try check(
+            history.entries.map(\.prompt) == ["Terceiro prompt", "Segundo prompt"],
+            "removing an entry that was trimmed has no effect"
+        )
+
+        history.remove(id: history.entries[0].id)
+        try check(
+            history.entries.map(\.prompt) == ["Segundo prompt"],
+            "prompt history removes an existing entry"
+        )
+        let imageEntry = history.add(
+            prompt: "Prompt with image [Image #1]",
+            sessionTitle: "projeto-c",
+            sentAt: Date(timeIntervalSince1970: 400),
+            imageAttachments: [PromptImageAttachment(number: 1, data: Data([1, 2, 3]))]
+        )
+        try check(
+            imageEntry.imageAttachments.count == 1,
+            "prompt history keeps image attachments with the prompt"
+        )
+        let now = Date(timeIntervalSince1970: 1_000)
+        try check(
+            PromptHistoryTime.label(
+                for: Date(timeIntervalSince1970: 999),
+                relativeTo: now
+            ) == "now",
+            "prompt history uses now during the first minute"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: Date(timeIntervalSince1970: 940),
+                relativeTo: now
+            ) == "1m",
+            "prompt history floors elapsed time to whole minutes"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: Date(timeIntervalSince1970: 880),
+                relativeTo: now
+            ) == "2m",
+            "prompt history increments the minute label only after two minutes"
+        )
+    }
+
+    private static func promptImageContracts() throws {
+        let prompt = "antes [Image #1] e depois [Image #3]"
+        try check(
+            PromptImageReference.numbers(in: prompt) == [1, 3],
+            "prompt image references are read in their display order"
+        )
+        try check(
+            PromptImageReference.nextNumber(in: prompt) == 4,
+            "new prompt images receive the next available number"
+        )
+    }
+
+    private static func promptEditorTokenContracts() throws {
+        let prompt = "antes [Image #1] e $grill depois"
+        let imageRange = NSRange(prompt.range(of: "[Image #1]", options: .literal)!, in: prompt)
+        let skillRange = NSRange(prompt.range(of: "$grill", options: .literal)!, in: prompt)
+        let tokens = PromptEditorTokens.tokens(in: prompt)
+
+        try check(
+            tokens == [
+                PromptEditorToken(kind: .imageReference, range: imageRange),
+                PromptEditorToken(kind: .skillReference, range: skillRange)
+            ],
+            "editor finds image and skill references in their display order"
+        )
+        try check(
+            PromptEditorTokens.editingRange(
+                for: NSRange(location: imageRange.location + 2, length: 1),
+                in: prompt
+            ) == imageRange,
+            "editing part of an image reference expands to the whole token"
+        )
+        try check(
+            PromptEditorTokens.editingRange(
+                for: NSRange(location: skillRange.location + 2, length: 0),
+                in: prompt
+            ) == skillRange,
+            "typing inside a skill reference expands to the whole token"
+        )
+        try check(
+            PromptEditorTokens.editingRange(
+                for: NSRange(location: skillRange.upperBound - 1, length: 1),
+                in: prompt
+            ) == skillRange,
+            "backspace at the end of a skill reference removes the whole token"
+        )
+        let commandDeleteRange = NSRange(location: 0, length: prompt.utf16.count)
+        try check(
+            PromptEditorTokens.editingRange(for: commandDeleteRange, in: prompt) == commandDeleteRange,
+            "a broad command deletion keeps its original range instead of collapsing to a token"
+        )
+        try check(
+            PromptEditorTokens.editingRange(
+                for: NSRange(location: imageRange.upperBound, length: 0),
+                in: prompt
+            ) == nil,
+            "typing immediately after a token remains outside the token"
         )
     }
 

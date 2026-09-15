@@ -42,7 +42,7 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleVersion</key>
-    <string>16</string>
+    <string>20</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>

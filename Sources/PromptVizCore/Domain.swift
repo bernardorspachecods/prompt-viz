@@ -138,6 +138,90 @@ public enum SkillManifestParser {
     }
 }
 
+public struct PromptImageAttachment: Identifiable, Codable, Equatable, Sendable {
+    public let id: UUID
+    public let number: Int
+    public let data: Data
+
+    public init(id: UUID = UUID(), number: Int, data: Data) {
+        self.id = id
+        self.number = number
+        self.data = data
+    }
+}
+
+public enum PromptEditorTokenKind: Equatable, Sendable {
+    case imageReference
+    case skillReference
+}
+
+public struct PromptEditorToken: Equatable, Sendable {
+    public let kind: PromptEditorTokenKind
+    public let range: NSRange
+
+    public init(kind: PromptEditorTokenKind, range: NSRange) {
+        self.kind = kind
+        self.range = range
+    }
+}
+
+public enum PromptEditorTokens {
+    private static let imageExpression = try! NSRegularExpression(
+        pattern: #"\[Image #[0-9]+\]"#
+    )
+    private static let skillExpression = try! NSRegularExpression(
+        pattern: #"\$[A-Za-z0-9_-]+"#
+    )
+
+    public static func tokens(in text: String) -> [PromptEditorToken] {
+        let nsText = text as NSString
+        let fullRange = NSRange(location: 0, length: nsText.length)
+        let imageTokens = imageExpression.matches(in: text, range: fullRange).map {
+            PromptEditorToken(kind: .imageReference, range: $0.range)
+        }
+        let skillTokens = skillExpression.matches(in: text, range: fullRange).map {
+            PromptEditorToken(kind: .skillReference, range: $0.range)
+        }
+
+        return (imageTokens + skillTokens).sorted {
+            if $0.range.location != $1.range.location {
+                return $0.range.location < $1.range.location
+            }
+            return $0.range.length < $1.range.length
+        }
+    }
+
+    public static func editingRange(
+        for affectedRange: NSRange,
+        in text: String
+    ) -> NSRange? {
+        guard affectedRange.location >= 0, affectedRange.length >= 0 else { return nil }
+
+        let editStart = affectedRange.location
+        let editEnd = affectedRange.location + affectedRange.length
+
+        var expandedRange: NSRange?
+        for token in tokens(in: text) {
+            let tokenStart = token.range.location
+            let tokenEnd = token.range.location + token.range.length
+
+            if affectedRange.length == 0 {
+                if editStart > tokenStart && editStart < tokenEnd {
+                    return token.range
+                }
+                continue
+            }
+
+            guard editStart < tokenEnd && editEnd > tokenStart else { continue }
+            expandedRange = expandedRange.map {
+                NSUnionRange($0, token.range)
+            } ?? NSUnionRange(affectedRange, token.range)
+        }
+
+        return expandedRange
+    }
+}
+
 public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let terminalSessionID: String
@@ -145,6 +229,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public var terminalTTY: String?
     public var title: String
     public var draft: String
+    public var imageAttachments: [PromptImageAttachment]
     public let createdAt: Date
     public var updatedAt: Date
 
@@ -155,6 +240,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
         terminalTTY: String? = nil,
         title: String,
         draft: String = "",
+        imageAttachments: [PromptImageAttachment] = [],
         createdAt: Date,
         updatedAt: Date? = nil
     ) {
@@ -164,6 +250,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
         self.terminalTTY = terminalTTY
         self.title = title
         self.draft = draft
+        self.imageAttachments = imageAttachments
         self.createdAt = createdAt
         self.updatedAt = updatedAt ?? createdAt
     }
@@ -203,6 +290,140 @@ public struct Snippet: Identifiable, Codable, Equatable, Sendable {
         self.body = body
         self.isFavorite = isFavorite
         self.shortcutNumber = shortcutNumber
+    }
+}
+
+public struct PromptHistoryEntry: Identifiable, Codable, Equatable, Sendable {
+    public let id: UUID
+    public let prompt: String
+    public let sessionTitle: String
+    public let sentAt: Date
+    public let imageAttachments: [PromptImageAttachment]
+
+    public init(
+        id: UUID = UUID(),
+        prompt: String,
+        sessionTitle: String,
+        sentAt: Date,
+        imageAttachments: [PromptImageAttachment] = []
+    ) {
+        self.id = id
+        self.prompt = prompt
+        self.sessionTitle = sessionTitle
+        self.sentAt = sentAt
+        self.imageAttachments = imageAttachments
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case prompt
+        case sessionTitle
+        case sentAt
+        case imageAttachments
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.prompt = try container.decode(String.self, forKey: .prompt)
+        self.sessionTitle = try container.decode(String.self, forKey: .sessionTitle)
+        self.sentAt = try container.decode(Date.self, forKey: .sentAt)
+        self.imageAttachments = try container.decodeIfPresent(
+            [PromptImageAttachment].self,
+            forKey: .imageAttachments
+        ) ?? []
+    }
+}
+
+public enum PromptHistoryTime {
+    public static func label(
+        for date: Date,
+        relativeTo now: Date = Date()
+    ) -> String {
+        let elapsed = max(0, now.timeIntervalSince(date))
+        let minutes = Int(elapsed / 60)
+        return minutes == 0 ? "now" : "\(minutes)m"
+    }
+}
+
+public enum PromptImageReference {
+    private static let expression = try! NSRegularExpression(
+        pattern: #"\[Image #([0-9]+)\]"#
+    )
+
+    public static func numbers(in text: String) -> [Int] {
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        var seen = Set<Int>()
+
+        return expression.matches(in: text, range: range).compactMap { match in
+            guard match.numberOfRanges > 1 else { return nil }
+            let number = Int(nsText.substring(with: match.range(at: 1)))
+            guard let number, seen.insert(number).inserted else { return nil }
+            return number
+        }
+    }
+
+    public static func nextNumber(in text: String) -> Int {
+        (numbers(in: text).max() ?? 0) + 1
+    }
+}
+
+public final class PromptHistoryStore {
+    public private(set) var entries: [PromptHistoryEntry]
+    public let limit: Int
+
+    public init(entries: [PromptHistoryEntry] = [], limit: Int = 100) {
+        self.limit = max(1, limit)
+        self.entries = Self.normalized(entries, limit: self.limit)
+    }
+
+    @discardableResult
+    public func add(
+        prompt: String,
+        sessionTitle: String,
+        sentAt: Date = Date(),
+        imageAttachments: [PromptImageAttachment] = []
+    ) -> PromptHistoryEntry {
+        let entry = PromptHistoryEntry(
+            prompt: prompt,
+            sessionTitle: sessionTitle,
+            sentAt: sentAt,
+            imageAttachments: imageAttachments
+        )
+        entries = Self.normalized(entries + [entry], limit: limit)
+        return entry
+    }
+
+    public func search(_ query: String) -> [PromptHistoryEntry] {
+        let normalizedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedQuery.isEmpty else { return entries }
+
+        return entries.filter {
+            $0.prompt.localizedCaseInsensitiveContains(normalizedQuery) ||
+                $0.sessionTitle.localizedCaseInsensitiveContains(normalizedQuery)
+        }
+    }
+
+    public func remove(id: UUID) {
+        entries.removeAll { $0.id == id }
+    }
+
+    public func removeAll() {
+        entries.removeAll()
+    }
+
+    private static func normalized(
+        _ entries: [PromptHistoryEntry],
+        limit: Int
+    ) -> [PromptHistoryEntry] {
+        let indexed = entries.enumerated().sorted { left, right in
+            if left.element.sentAt != right.element.sentAt {
+                return left.element.sentAt > right.element.sentAt
+            }
+            return left.offset < right.offset
+        }
+        return Array(indexed.map(\.element).prefix(limit))
     }
 }
 
@@ -248,9 +469,14 @@ public final class WorkspaceStore {
         workspaces.first(where: { $0.id == id })
     }
 
-    public func updateDraft(_ draft: String, for workspaceID: UUID) {
+    public func updateDraft(
+        _ draft: String,
+        imageAttachments: [PromptImageAttachment] = [],
+        for workspaceID: UUID
+    ) {
         guard let index = workspaces.firstIndex(where: { $0.id == workspaceID }) else { return }
         workspaces[index].draft = draft
+        workspaces[index].imageAttachments = imageAttachments
         workspaces[index].updatedAt = now()
     }
 

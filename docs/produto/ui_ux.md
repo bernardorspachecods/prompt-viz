@@ -38,3 +38,18 @@
 - A pesquisa de skills aparece sobre o editor quando existe uma referência
   iniciada por `$`.
 - A sugestão selecionada fica realçada e pode ser escolhida pelo teclado.
+
+## Histórico
+
+- A barra lateral contém uma secção `History` com os prompts enviados mais
+  recentemente.
+- A pesquisa filtra pelo conteúdo do prompt e pelo nome da sessão.
+- Clicar numa entrada carrega-a no editor.
+- Cada entrada tem uma ação para apagar; limpar todo o histórico exige
+  confirmação.
+
+## Imagens
+
+- `⌥V` insere a imagem do clipboard como uma referência `[Image #N]` no editor.
+- `⌘V` continua reservado para paste normal de texto.
+- O botão de imagem junto ao envio executa o mesmo comando como alternativa.

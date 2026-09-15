@@ -11,6 +11,7 @@ O comportamento observável está em [`../produto/requisitos.md`](../produto/req
 App shell macOS (background agent)
   ├── WorkspaceStore ────────► drafts/sessions
   ├── SnippetLibrary ────────► snippets
+  ├── PromptHistoryStore ────► sent prompts
   ├── App state ─────────────► editor + insertion
   └── TerminalAutomation ────► focus + paste + Return
 ```
@@ -27,6 +28,12 @@ persistência nem os detalhes de identificação de tabs.
 
 Gere snippets globais, favoritos e edição. A UI recebe modelos prontos para apresentar.
 
+### `PromptHistoryStore`
+
+Gere as entradas dos prompts enviados com sucesso, ordenadas da mais recente
+para a mais antiga, com pesquisa por prompt/sessão e limite de 100 entradas.
+`LocalPromptHistoryPersistence` serializa as entradas em `UserDefaults`.
+
 ### `TerminalAutomation`
 
 É a fronteira entre a app e as APIs de Acessibilidade do macOS. Identifica a
@@ -38,7 +45,7 @@ exercida pelo contract runner.
 
 - **SwiftUI:** janela principal, tabs nativas de workspaces, editor, snippets, estados e comandos.
 - **AppKit/Foundation:** observação da app ativa, Acessibilidade do Terminal.app, clipboard, eventos de teclado e registo do atalho global.
-- **Domínio puro:** modelos, store e pesquisa.
+- **Domínio puro:** modelos, store, pesquisa e referências de imagens.
 
 A UI apresenta estado e envia comandos; não deve chamar diretamente `AXUIElement`, escrever na clipboard ou sintetizar teclas.
 O arranque não apresenta pedidos de permissão. A app tenta identificar o Terminal quando o utilizador abre o compositor e só oferece as Definições de Acessibilidade se a API devolver explicitamente que está desativada.
@@ -54,6 +61,11 @@ As invariantes são:
 - Depois da captura, o editor recebe o foco e o cursor fica no fim lógico do draft, com um espaço de continuação se o texto não terminar em whitespace.
 - As alterações posteriores existem apenas no editor da app até ao envio.
 - O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
+- As referências `[Image #N]` são resolvidas contra os anexos do draft; a
+  automação cola cada segmento de texto ou PNG pela ordem original.
+- O editor identifica referências de imagem e skills como tokens inline,
+  aplica-lhes `NSColor.controlAccentColor` e expande edições parciais para o
+  intervalo completo do token.
 - A seleção e validação da sessão acontecem antes de qualquer tecla ser publicada.
 
 ### Troca de workspaces
@@ -76,7 +88,9 @@ consecutivas; se reaparecer entretanto, o workspace é mantido.
 - Eventos e erros de runtime são registados em `~/Library/Logs/PromptViz.log` e
   no sistema de logs do macOS.
 - Workspaces e rascunhos ficam em memória e não são restaurados entre execuções.
-- Não existe persistência de histórico de prompts enviadas.
+- O histórico de prompts enviados é persistido localmente em `UserDefaults` e
+  não é partilhado com outros dispositivos, incluindo os dados dos anexos de
+  imagem.
 - A persistência de snippets está atrás de uma interface pequena para permitir
   testar o domínio sem depender diretamente de `UserDefaults`.
 

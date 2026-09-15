@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 import PromptVizCore
 
 enum PromptVizBuild {
-    static let label = "MVP build 16"
+    static let label = "MVP build 20"
 }
 
 enum PromptVizLog {
@@ -71,6 +71,18 @@ enum SkillKeyboardAction {
     case moveUp
     case moveDown
     case choose
+}
+
+private func isImagePasteShortcut(_ event: NSEvent) -> Bool {
+    let modifiers = event.modifierFlags
+    guard modifiers.contains(.option),
+          !modifiers.contains(.command),
+          !modifiers.contains(.control)
+    else { return false }
+
+    return event.keyCode == 9 ||
+        event.charactersIgnoringModifiers?.lowercased() == "v" ||
+        event.characters?.lowercased() == "√"
 }
 
 struct GlobalShortcut: Codable, Equatable {
@@ -363,7 +375,11 @@ final class TerminalAutomation: @unchecked Sendable {
         return inventory
     }
 
-    func sendCodexInputAndReturn(_ buffer: String, to expectedSession: TerminalSession) throws {
+    func sendCodexInputAndReturn(
+        _ buffer: String,
+        imageAttachments: [PromptImageAttachment] = [],
+        to expectedSession: TerminalSession
+    ) throws {
         guard let expectedTTY = expectedSession.tty else {
             throw TerminalAutomationError.sessionChanged
         }
@@ -385,17 +401,87 @@ final class TerminalAutomation: @unchecked Sendable {
             throw TerminalAutomationError.accessibilityNotTrusted
         }
 
+        postKey(virtualKey: 0, flags: .maskControl, to: expectedSession.processIdentifier)
+        postKey(virtualKey: 40, flags: .maskControl, to: expectedSession.processIdentifier)
+        try pastePrompt(
+            buffer,
+            imageAttachments: imageAttachments,
+            to: expectedSession.processIdentifier
+        )
+        postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
+    }
+
+    private func pastePrompt(
+        _ buffer: String,
+        imageAttachments: [PromptImageAttachment],
+        to processIdentifier: pid_t
+    ) throws {
+        let expression = try! NSRegularExpression(pattern: #"\[Image #([0-9]+)\]"#)
+        let nsBuffer = buffer as NSString
+        let range = NSRange(location: 0, length: nsBuffer.length)
+        let attachmentsByNumber = Dictionary(
+            uniqueKeysWithValues: imageAttachments.map { ($0.number, $0) }
+        )
+        var cursor = 0
+
+        for match in expression.matches(in: buffer, range: range) {
+            if match.range.location > cursor {
+                try pasteText(
+                    nsBuffer.substring(with: NSRange(
+                        location: cursor,
+                        length: match.range.location - cursor
+                    )),
+                    to: processIdentifier
+                )
+            }
+
+            let reference = nsBuffer.substring(with: match.range)
+            let number = Int(nsBuffer.substring(with: match.range(at: 1)))
+            if let number, let attachment = attachmentsByNumber[number] {
+                PromptVizLog.info("Sending image attachment #[\(number)] with Ctrl+V")
+                try pasteImage(attachment.data, to: processIdentifier)
+            } else {
+                try pasteText(reference, to: processIdentifier)
+            }
+            cursor = match.range.location + match.range.length
+        }
+
+        if cursor < nsBuffer.length {
+            try pasteText(
+                nsBuffer.substring(with: NSRange(
+                    location: cursor,
+                    length: nsBuffer.length - cursor
+                )),
+                to: processIdentifier
+            )
+        }
+    }
+
+    private func pasteText(_ text: String, to processIdentifier: pid_t) throws {
+        guard !text.isEmpty else { return }
+
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        guard pasteboard.setString(buffer, forType: .string) else {
+        guard pasteboard.setString(text, forType: .string) else {
             throw TerminalAutomationError.sendFailed
         }
 
-        postKey(virtualKey: 0, flags: .maskControl, to: expectedSession.processIdentifier)
-        postKey(virtualKey: 40, flags: .maskControl, to: expectedSession.processIdentifier)
-        postKey(virtualKey: 9, flags: .maskCommand, to: expectedSession.processIdentifier)
+        postKey(virtualKey: 9, flags: .maskCommand, to: processIdentifier)
         Thread.sleep(forTimeInterval: 0.2)
-        postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
+    }
+
+    private func pasteImage(_ data: Data, to processIdentifier: pid_t) throws {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setData(data, forType: .png) else {
+            throw TerminalAutomationError.sendFailed
+        }
+
+        // Codex's TUI reserves Ctrl+V for reading an image from the system
+        // clipboard. Cmd+V is the terminal's normal text-paste command.
+        postKey(virtualKey: 9, flags: .maskControl, to: processIdentifier)
+        Thread.sleep(forTimeInterval: 0.2)
+        PromptVizLog.info("Image PNG pasted to Codex with Ctrl+V")
     }
 
     func requestTabSelection(tty: String) {
@@ -599,15 +685,41 @@ final class LocalSnippetPersistence {
     }
 }
 
+final class LocalPromptHistoryPersistence {
+    private let defaults: UserDefaults
+    private let key = "prompt-viz.prompt-history"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func load() -> [PromptHistoryEntry] {
+        guard
+            let data = defaults.data(forKey: key),
+            let entries = try? JSONDecoder().decode([PromptHistoryEntry].self, from: data)
+        else { return [] }
+
+        return entries
+    }
+
+    func save(_ entries: [PromptHistoryEntry]) {
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
+
 @MainActor
 final class PromptVizModel: ObservableObject {
     static let shared = PromptVizModel()
 
     @Published private(set) var workspaces: [Workspace] = []
     @Published private(set) var snippets: [Snippet] = []
+    @Published private(set) var history: [PromptHistoryEntry] = []
     @Published private(set) var skills: [SkillDescriptor] = []
     @Published var selectedWorkspaceID: UUID?
     @Published var editorText = ""
+    @Published private(set) var editorImageAttachments: [PromptImageAttachment] = []
+    @Published var imagePasteRequest: UUID?
     @Published var insertionRequest: TextInsertionRequest?
     @Published var editorCursorLocationRequest: Int?
     @Published var editorFocusRequest: UUID?
@@ -623,8 +735,10 @@ final class PromptVizModel: ObservableObject {
 
     let workspaceStore = WorkspaceStore()
     let snippetLibrary: SnippetLibrary
+    let promptHistory: PromptHistoryStore
     let terminalAutomation = TerminalAutomation()
     private let snippetPersistence = LocalSnippetPersistence()
+    private let promptHistoryPersistence = LocalPromptHistoryPersistence()
     let skillCatalog = SkillCatalog()
     private var workspaceMonitor: Timer?
     private var skillMonitor: Timer?
@@ -637,6 +751,7 @@ final class PromptVizModel: ObservableObject {
 
     private init() {
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
+        promptHistory = PromptHistoryStore(entries: promptHistoryPersistence.load())
         skills = []
         sync()
         PromptVizLog.info("Application model initialized")
@@ -688,6 +803,7 @@ final class PromptVizModel: ObservableObject {
             )
             selectedWorkspaceID = workspace.id
             setEditorText(editorDraft)
+            editorImageAttachments = []
             editorCursorLocationRequest = (editorDraft as NSString).length
             editorFocusRequest = UUID()
             workspaceStore.updateDraft(editorDraft, for: workspace.id)
@@ -718,6 +834,7 @@ final class PromptVizModel: ObservableObject {
             terminalAutomation.requestTabSelection(tty: tty)
         }
         setEditorText(workspace.draft)
+        editorImageAttachments = workspace.imageAttachments
         sync(reconcileWindows: false)
     }
 
@@ -753,10 +870,12 @@ final class PromptVizModel: ObservableObject {
                 tty: nextWorkspace.terminalTTY
             )
             setEditorText(nextWorkspace.draft)
+            editorImageAttachments = nextWorkspace.imageAttachments
         } else {
             selectedWorkspaceID = nil
             activeSession = nil
             setEditorText("")
+            editorImageAttachments = []
         }
 
         sync()
@@ -789,6 +908,44 @@ final class PromptVizModel: ObservableObject {
     func insert(_ snippet: Snippet) {
         insertionRequest = TextInsertionRequest(text: snippet.body)
         PromptVizLog.info("Template inserted")
+    }
+
+    func registerImageAttachment(_ data: Data, number: Int) {
+        guard !data.isEmpty else { return }
+        editorImageAttachments.removeAll { $0.number == number }
+        editorImageAttachments.append(PromptImageAttachment(number: number, data: data))
+        saveCurrentDraft()
+        PromptVizLog.info("Image attachment added")
+    }
+
+    func requestImagePaste() {
+        imagePasteRequest = UUID()
+        editorFocusRequest = UUID()
+        PromptVizLog.info("Image paste requested from app command")
+    }
+
+    func loadHistoryEntry(_ entry: PromptHistoryEntry) {
+        saveCurrentDraft()
+        setEditorText(entry.prompt)
+        editorImageAttachments = entry.imageAttachments
+        editorCursorLocationRequest = (entry.prompt as NSString).length
+        editorFocusRequest = UUID()
+        sync(reconcileWindows: false)
+        PromptVizLog.info("Prompt history entry loaded")
+    }
+
+    func removeHistoryEntry(_ entry: PromptHistoryEntry) {
+        promptHistory.remove(id: entry.id)
+        promptHistoryPersistence.save(promptHistory.entries)
+        sync(reconcileWindows: false)
+        PromptVizLog.info("Prompt history entry deleted")
+    }
+
+    func clearHistory() {
+        promptHistory.removeAll()
+        promptHistoryPersistence.save(promptHistory.entries)
+        sync(reconcileWindows: false)
+        PromptVizLog.info("Prompt history cleared")
     }
 
     func selectSkill(_ skill: SkillDescriptor) {
@@ -826,8 +983,20 @@ final class PromptVizModel: ObservableObject {
         do {
             let textToSend = latestEditorText
             guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            try terminalAutomation.sendCodexInputAndReturn(textToSend, to: activeSession)
+            PromptVizLog.info("Sending prompt with \(editorImageAttachments.count) image attachment(s)")
+            try terminalAutomation.sendCodexInputAndReturn(
+                textToSend,
+                imageAttachments: editorImageAttachments,
+                to: activeSession
+            )
+            promptHistory.add(
+                prompt: textToSend.trimmingCharacters(in: .whitespacesAndNewlines),
+                sessionTitle: activeSession.title,
+                imageAttachments: editorImageAttachments
+            )
+            promptHistoryPersistence.save(promptHistory.entries)
             setEditorText("")
+            editorImageAttachments = []
             saveCurrentDraft()
             sync(reconcileWindows: false)
             openMainWindow()
@@ -884,7 +1053,15 @@ final class PromptVizModel: ObservableObject {
 
     private func saveCurrentDraft() {
         guard let selectedWorkspaceID else { return }
-        workspaceStore.updateDraft(latestEditorText, for: selectedWorkspaceID)
+        let referencedNumbers = Set(PromptImageReference.numbers(in: latestEditorText))
+        editorImageAttachments = editorImageAttachments.filter {
+            referencedNumbers.contains($0.number)
+        }
+        workspaceStore.updateDraft(
+            latestEditorText,
+            imageAttachments: editorImageAttachments,
+            for: selectedWorkspaceID
+        )
     }
 
     private func setEditorText(_ text: String) {
@@ -906,6 +1083,7 @@ final class PromptVizModel: ObservableObject {
     private func sync(reconcileWindows: Bool = true) {
         workspaces = workspaceStore.workspaces
         snippets = snippetLibrary.snippets
+        history = promptHistory.entries
         if reconcileWindows {
             workspacesDidChangeHandler?()
         }
@@ -987,6 +1165,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var keyboardMonitor: Any?
     private var workspaceSwitchMonitor: Any?
+    private var imagePasteMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         PromptVizLog.info("Application did finish launching")
@@ -1032,6 +1211,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
+        imagePasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.modifierFlags.contains(.option) {
+                PromptVizLog.info(
+                    "Option key event: keyCode=\(event.keyCode), characters=\(event.characters ?? "none"), ignoringModifiers=\(event.charactersIgnoringModifiers ?? "none")"
+                )
+            }
+
+            guard isImagePasteShortcut(event) else { return event }
+
+            guard let textView = NSApp.keyWindow?.firstResponder as? PromptTextView else {
+                PromptVizLog.info("Image shortcut ignored because the editor is not focused")
+                return event
+            }
+
+            PromptVizLog.info("Image shortcut received by app monitor")
+            return textView.onImagePaste?() == true ? nil : event
+        }
+
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -1040,6 +1237,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         if let workspaceSwitchMonitor {
             NSEvent.removeMonitor(workspaceSwitchMonitor)
+        }
+        if let imagePasteMonitor {
+            NSEvent.removeMonitor(imagePasteMonitor)
         }
     }
 }
@@ -1187,6 +1387,8 @@ struct ContentView: View {
     @ObservedObject var model: PromptVizModel
     @State private var snippetEditorPresentation: SnippetEditorPresentation?
     @State private var showingSettings = false
+    @State private var historySearch = ""
+    @State private var showingHistoryClearConfirmation = false
 
     private var composerTitle: String {
         let title = model.selectedWorkspace?.title ?? "Prompt Viz"
@@ -1287,6 +1489,14 @@ struct ContentView: View {
 
                     Spacer()
 
+                    Button {
+                        model.requestImagePaste()
+                    } label: {
+                        Image(systemName: "photo")
+                    }
+                    .keyboardShortcut("v", modifiers: [.option])
+                    .help("Paste image (⌥V)")
+
                     Button("Send") {
                         model.send()
                     }
@@ -1347,6 +1557,50 @@ struct ContentView: View {
                             .buttonStyle(.bordered)
                         }
                     }
+
+                    Divider()
+
+                    HStack {
+                        Text("History")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        if !model.history.isEmpty {
+                            Button {
+                                showingHistoryClearConfirmation = true
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Clear history")
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search history", text: $historySearch)
+                            .textFieldStyle(.plain)
+                    }
+                    .padding(7)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(.quaternary)
+                    }
+
+                    if visibleHistory.isEmpty {
+                        Text(model.history.isEmpty ? "Sent prompts appear here." : "No matching prompts.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 4)
+                    } else {
+                        ForEach(visibleHistory) { entry in
+                            historyRow(entry)
+                        }
+                    }
                 }
             }
             .frame(maxHeight: .infinity)
@@ -1372,6 +1626,70 @@ struct ContentView: View {
             alignment: .top
         )
         .background(.quaternary.opacity(0.18))
+        .alert("Clear prompt history?", isPresented: $showingHistoryClearConfirmation) {
+            Button("Clear", role: .destructive) {
+                model.clearHistory()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This cannot be undone.")
+        }
+    }
+
+    private var visibleHistory: [PromptHistoryEntry] {
+        model.promptHistory.search(historySearch)
+    }
+
+    private func historyRow(_ entry: PromptHistoryEntry) -> some View {
+        HStack(alignment: .top, spacing: 5) {
+            Button {
+                model.loadHistoryEntry(entry)
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(historyPreview(entry.prompt))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+
+                    HStack(spacing: 4) {
+                        Text(entry.sessionTitle)
+                            .lineLimit(1)
+                        Text("·")
+                        TimelineView(.periodic(from: Date(), by: 30)) { context in
+                            Text(PromptHistoryTime.label(
+                                for: entry.sentAt,
+                                relativeTo: context.date
+                            ))
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Load prompt into editor")
+
+            Button {
+                model.removeHistoryEntry(entry)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption2.weight(.semibold))
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .help("Delete history entry")
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .background(.background.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func historyPreview(_ prompt: String) -> String {
+        prompt
+            .components(separatedBy: .newlines)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func shortcutSlot(_ snippet: Snippet, shortcutNumber: Int) -> some View {
@@ -1625,8 +1943,12 @@ struct PromptEditorArea: View {
                 insertionRequest: $model.insertionRequest,
                 cursorLocationRequest: $model.editorCursorLocationRequest,
                 focusRequest: $model.editorFocusRequest,
+                imagePasteRequest: $model.imagePasteRequest,
                 skillHighlightRequest: $model.skillHighlightRequest,
-                onSkillKeyboardAction: handleSkillKeyboardAction
+                onSkillKeyboardAction: handleSkillKeyboardAction,
+                onImagePaste: { data, number in
+                    model.registerImageAttachment(data, number: number)
+                }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -1734,27 +2056,66 @@ struct PromptEditorArea: View {
     }
 }
 
+final class PromptTextView: NSTextView {
+    var onImagePaste: (() -> Bool)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard isImagePasteShortcut(event) else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        PromptVizLog.info("Image shortcut received through key equivalent")
+        if onImagePaste?() == true {
+            return true
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if isImagePasteShortcut(event) {
+            PromptVizLog.info("Image shortcut received through key down")
+            if onImagePaste?() == true {
+                return
+            }
+        }
+
+        super.keyDown(with: event)
+    }
+}
+
 struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var insertionRequest: TextInsertionRequest?
     @Binding var cursorLocationRequest: Int?
     @Binding var focusRequest: UUID?
+    @Binding var imagePasteRequest: UUID?
     @Binding var skillHighlightRequest: SkillHighlightRequest?
     let onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
+    let onImagePaste: (Data, Int) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSkillKeyboardAction: onSkillKeyboardAction)
+        Coordinator(
+            text: $text,
+            onSkillKeyboardAction: onSkillKeyboardAction,
+            onImagePaste: onImagePaste
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let textView = NSTextView()
+        let textView = PromptTextView()
         textView.delegate = context.coordinator
-        textView.isRichText = false
+        textView.onImagePaste = { [weak textView, weak coordinator = context.coordinator] in
+            guard let textView else { return false }
+            return coordinator?.handleImagePaste(in: textView) ?? false
+        }
+        textView.isRichText = true
         textView.isEditable = true
         textView.isSelectable = true
         textView.font = .systemFont(ofSize: 15)
         textView.textContainerInset = NSSize(width: 10, height: 12)
         textView.drawsBackground = false
+        Self.applyInlineTokenStyles(to: textView)
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -1767,6 +2128,7 @@ struct PromptTextEditor: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
         context.coordinator.onSkillKeyboardAction = onSkillKeyboardAction
+        context.coordinator.onImagePaste = onImagePaste
 
         if textView.string != text {
             let location = min(textView.selectedRange().location, text.utf16.count)
@@ -1775,6 +2137,8 @@ struct PromptTextEditor: NSViewRepresentable {
             textView.setSelectedRange(NSRange(location: location, length: 0))
             context.coordinator.isApplyingModelText = false
         }
+
+        Self.applyInlineTokenStyles(to: textView)
 
         if let cursorLocationRequest {
             let location = min(max(0, cursorLocationRequest), (textView.string as NSString).length)
@@ -1794,6 +2158,17 @@ struct PromptTextEditor: NSViewRepresentable {
                 guard self.focusRequest == requestID else { return }
                 textView.window?.makeFirstResponder(textView)
                 self.focusRequest = nil
+            }
+        }
+
+        if let imagePasteRequest,
+           context.coordinator.lastImagePasteRequest != imagePasteRequest {
+            context.coordinator.lastImagePasteRequest = imagePasteRequest
+            _ = context.coordinator.handleImagePaste(in: textView)
+            let requestID = imagePasteRequest
+            DispatchQueue.main.async {
+                guard self.imagePasteRequest == requestID else { return }
+                self.imagePasteRequest = nil
             }
         }
 
@@ -1841,6 +2216,7 @@ struct PromptTextEditor: NSViewRepresentable {
         textView.string = updated
         textView.setSelectedRange(NSRange(location: selection.location + insertionRequest.text.utf16.count, length: 0))
         context.coordinator.isApplyingModelText = false
+        Self.applyInlineTokenStyles(to: textView)
         let requestID = insertionRequest.id
         DispatchQueue.main.async {
             guard self.insertionRequest?.id == requestID else { return }
@@ -1850,26 +2226,88 @@ struct PromptTextEditor: NSViewRepresentable {
         }
     }
 
+    static func applyInlineTokenStyles(to textView: NSTextView) {
+        guard let textStorage = textView.textStorage else { return }
+
+        let fullRange = NSRange(location: 0, length: textStorage.length)
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 15),
+            .foregroundColor: NSColor.labelColor
+        ]
+
+        textStorage.beginEditing()
+        if fullRange.length > 0 {
+            textStorage.setAttributes(baseAttributes, range: fullRange)
+        }
+
+        let tokenAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
+            .foregroundColor: NSColor.controlAccentColor
+        ]
+        for token in PromptEditorTokens.tokens(in: textView.string) {
+            textStorage.addAttributes(tokenAttributes, range: token.range)
+        }
+        textStorage.endEditing()
+        textView.typingAttributes = baseAttributes
+    }
+
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         var lastInsertionID: UUID?
         var lastFocusRequestID: UUID?
+        var lastImagePasteRequest: UUID?
         var lastSkillHighlightID: UUID?
         var isApplyingModelText = false
         var onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
+        var onImagePaste: (Data, Int) -> Void
 
         init(
             text: Binding<String>,
-            onSkillKeyboardAction: @escaping (SkillKeyboardAction) -> Bool
+            onSkillKeyboardAction: @escaping (SkillKeyboardAction) -> Bool,
+            onImagePaste: @escaping (Data, Int) -> Void
         ) {
             _text = text
             self.onSkillKeyboardAction = onSkillKeyboardAction
+            self.onImagePaste = onImagePaste
         }
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             guard !isApplyingModelText else { return }
             text = textView.string
+        }
+
+        func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?
+        ) -> Bool {
+            if let tokenRange = PromptEditorTokens.editingRange(
+                for: affectedCharRange,
+                in: textView.string
+            ), tokenRange != affectedCharRange {
+                let replacement = replacementString ?? ""
+                isApplyingModelText = true
+                textView.textStorage?.replaceCharacters(in: tokenRange, with: replacement)
+                textView.setSelectedRange(NSRange(
+                    location: tokenRange.location + replacement.utf16.count,
+                    length: 0
+                ))
+                isApplyingModelText = false
+                text = textView.string
+                PromptTextEditor.applyInlineTokenStyles(to: textView)
+                PromptVizLog.info("Inline token edit expanded to the whole block")
+                return false
+            }
+
+            guard
+                replacementString != nil,
+                let event = NSApp.currentEvent,
+                isImagePasteShortcut(event)
+            else { return true }
+
+            PromptVizLog.info("Image shortcut received through text replacement")
+            return !handleImagePaste(in: textView, selectedRange: affectedCharRange)
         }
 
         func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -1886,6 +2324,66 @@ struct PromptTextEditor: NSViewRepresentable {
             default:
                 return false
             }
+        }
+
+        @MainActor
+        fileprivate func handleImagePaste(
+            in textView: NSTextView,
+            selectedRange overrideRange: NSRange? = nil
+        ) -> Bool {
+            let pasteboard = NSPasteboard.general
+            let types = pasteboard.types?.map(\.rawValue).joined(separator: ", ") ?? "none"
+            PromptVizLog.info("Image pasteboard types: \(types)")
+
+            let imageData: Data
+            if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+                imageData = pngData
+                PromptVizLog.info("Image paste found PNG data")
+            } else if let tiffData = pasteboard.data(forType: .tiff),
+                      let image = NSImage(data: tiffData),
+                      let convertedData = pngData(from: image) {
+                imageData = convertedData
+                PromptVizLog.info("Image paste converted TIFF data to PNG")
+            } else if let image = NSImage(pasteboard: pasteboard),
+                      let convertedData = pngData(from: image) {
+                imageData = convertedData
+                PromptVizLog.info("Image paste converted NSImage data to PNG")
+            } else {
+                PromptVizLog.info("Image paste found no supported image data")
+                return false
+            }
+
+            let number = PromptImageReference.nextNumber(in: textView.string)
+            let token = "[Image #\(number)]"
+            let currentText = textView.string as NSString
+            let currentLength = currentText.length
+            let selectedRange = overrideRange ?? textView.selectedRange()
+            let location = min(max(0, selectedRange.location), currentLength)
+            let length = min(max(0, selectedRange.length), currentLength - location)
+            let selection = NSRange(location: location, length: length)
+            let updated = currentText.replacingCharacters(in: selection, with: token)
+
+            isApplyingModelText = true
+            textView.string = updated
+            textView.setSelectedRange(NSRange(
+                location: selection.location + token.utf16.count,
+                length: 0
+            ))
+            isApplyingModelText = false
+            text = updated
+            onImagePaste(imageData, number)
+            PromptTextEditor.applyInlineTokenStyles(to: textView)
+            PromptVizLog.info("Image placeholder inserted: \(token)")
+            return true
+        }
+
+        private func pngData(from image: NSImage) -> Data? {
+            guard
+                let tiffData = image.tiffRepresentation,
+                let bitmap = NSBitmapImageRep(data: tiffData)
+            else { return nil }
+
+            return bitmap.representation(using: .png, properties: [:])
         }
     }
 }
