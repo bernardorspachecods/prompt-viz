@@ -8,4 +8,6 @@ Executar a partir da raiz:
 swift run PromptVizContractRunner
 ```
 
-Adicionar aqui contratos para comportamentos determinísticos; a integração real do Terminal.app continua a exigir validação manual documentada em [`../../docs/current-state.md`](../../docs/current-state.md).
+Adicionar aqui contratos para comportamentos determinísticos; as fronteiras da
+integração real do Terminal.app estão documentadas em
+[`../../docs/tecnico/arquitetura_atual.md`](../../docs/tecnico/arquitetura_atual.md).

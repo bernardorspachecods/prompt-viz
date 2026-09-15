@@ -1,8 +1,11 @@
-# Arquitetura técnica
+# Arquitetura atual
 
-Este documento descreve as fronteiras e contratos técnicos da aplicação. A intenção do produto está em [vision.md](vision.md); o funcionamento verificado está em [current-state.md](current-state.md).
+Este documento descreve as fronteiras e os contratos técnicos implementados.
+O comportamento observável está em [`../produto/requisitos.md`](../produto/requisitos.md),
+[`../produto/fluxos.md`](../produto/fluxos.md) e
+[`../produto/ui_ux.md`](../produto/ui_ux.md).
 
-## Arquitetura recomendada
+## Estrutura atual
 
 ```text
 App shell macOS
@@ -16,7 +19,9 @@ O desenho separa responsabilidades em módulos com interfaces pequenas:
 
 ### `WorkspaceStore`
 
-Gere a criação, seleção, atualização e remoção de workspaces. A UI não conhece a forma de persistência nem os detalhes de identificação de tabs.
+Gere a criação, atualização e remoção de workspaces. A seleção visual e a
+sessão ativa são coordenadas pelo estado da app. A UI não conhece a forma de
+persistência nem os detalhes de identificação de tabs.
 
 ### `SnippetLibrary`
 
@@ -24,7 +29,10 @@ Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos pront
 
 ### `TerminalAutomation`
 
-É o seam entre a app e as APIs de Acessibilidade do macOS. Identifica a sessão ativa, captura o draft visível do Codex, foca a tab correta e executa substituição + `Return` no envio. A lógica de parsing fica no domínio puro e pode usar um fake no contract runner.
+É a fronteira entre a app e as APIs de Acessibilidade do macOS. Identifica a
+sessão ativa, captura o draft visível do Codex, foca a tab correta e executa
+substituição + `Return` no envio. A lógica de parsing fica no domínio puro e é
+exercida pelo contract runner.
 
 ## Fronteiras SwiftUI/AppKit
 
@@ -56,20 +64,26 @@ A troca entre workspaces da app atualiza imediatamente a seleção, o editor e a
 
 O adapter lê a tab selecionada no Terminal.app e usa o seu TTY como identificador da sessão. O TTY e o PID são dados do adapter; não devem vazar para as views como lógica de descoberta. O título e a geometria da janela são apenas metadados de apresentação.
 
-O inventário de tabs é válido para remoção apenas quando a enumeração percorreu todas as janelas e tabs sem erros, o número de TTYs lidos coincide com o número de tabs e o inventário não está vazio. Uma resposta incompleta ou vazia não remove workspaces. Uma sessão só é removida depois de duas ausências completas consecutivas; se reaparecer entretanto, a ausência pendente é cancelada.
+O inventário de tabs é válido para remoção apenas quando a enumeração percorreu
+todas as janelas e tabs sem erros, o número de TTYs lidos coincide com o número
+de tabs e o inventário não está vazio. Uma resposta incompleta ou vazia não
+remove workspaces. Uma sessão só é removida depois de duas observações completas
+consecutivas; se reaparecer entretanto, o workspace é mantido.
 
 ## Persistência
 
-- Guardar snippets e preferências localmente.
-- Guardar o rascunho apenas enquanto a sessão correspondente existe.
-- Não guardar conteúdo histórico de prompts enviadas.
-- Manter a persistência atrás de uma interface pequena para poder testar o domínio sem filesystem ou UserDefaults.
+- Snippets são serializados em `UserDefaults.standard`.
+- Workspaces e rascunhos ficam em memória e não são restaurados entre execuções.
+- Não existe persistência de histórico de prompts enviadas.
+- A persistência de snippets está atrás de uma interface pequena para permitir
+  testar o domínio sem depender diretamente de `UserDefaults`.
 
-## Riscos e limites
+## Limites técnicos atuais
 
 - Acessibilidade é necessária para automatizar o Terminal.app.
 - O Terminal.app expõe a TUI como um `AXTextArea` com histórico e layout visual, não como um campo Codex separado; a extração depende do formato atual da TUI.
-- Wraps visuais e novas linhas reais são distinguidos pelas margens observadas na TUI e exigem validação manual após atualizações do Codex.
+- Wraps visuais e novas linhas reais são distinguidos pelas margens observadas
+  na TUI.
 - A app não consegue garantir semanticamente que o Codex está pronto para receber input.
 - Alterar título ou estrutura de tabs pode afetar a identificação da sessão; o adapter deve encapsular essa instabilidade.
 - O envio deve falhar de forma explícita se não houver Terminal.app ou uma sessão-alvo válida.

@@ -4,4 +4,6 @@ Este target contém a aplicação macOS SwiftUI e as integrações AppKit.
 
 - `PromptVizApp.swift` contém o estado da aplicação, a shell menu bar/janela e `TerminalAutomation`.
 
-Consulte [`../../docs/architecture.md`](../../docs/architecture.md) para as fronteiras técnicas e [`../../docs/current-state.md`](../../docs/current-state.md) para o estado verificado.
+Consulte [`../../docs/tecnico/arquitetura_atual.md`](../../docs/tecnico/arquitetura_atual.md)
+para as fronteiras técnicas e [`../../docs/produto/fluxos.md`](../../docs/produto/fluxos.md)
+para os fluxos observáveis.

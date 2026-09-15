@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>Prompt Viz</title>
+  <desc>Uma moldura aberta com um cursor de prompt e três linhas de saída.</desc>
+  <g stroke-linecap="round" stroke-linejoin="round" stroke-width="5">
+    <path d="M13 16v32M13 16h10M13 48h10" stroke="#17253D"/>
+    <path d="m25 23 9 9-9 9" stroke="#24BFA6"/>
+    <path d="M40 23h11M40 32h7M40 41h11" stroke="#17253D"/>
+  </g>
+</svg>

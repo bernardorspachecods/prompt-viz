@@ -783,8 +783,21 @@ struct PromptVizApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = PromptVizModel.shared
 
+    private var menuBarLogo: Image {
+        guard
+            let url = Bundle.main.url(forResource: "PromptVizLogo", withExtension: "svg"),
+            let image = NSImage(contentsOf: url)
+        else {
+            return Image(systemName: "text.bubble")
+        }
+
+        image.isTemplate = true
+        image.size = NSSize(width: 18, height: 18)
+        return Image(nsImage: image)
+    }
+
     var body: some Scene {
-        MenuBarExtra("Prompt Viz · \(PromptVizBuild.label)", systemImage: "text.bubble") {
+        MenuBarExtra {
             Button("Abrir compositor") {
                 model.captureActiveTerminalSession()
             }
@@ -794,6 +807,12 @@ struct PromptVizApp: App {
 
             Button("Sair") {
                 NSApplication.shared.terminate(nil)
+            }
+        } label: {
+            Label {
+                Text("Prompt Viz · \(PromptVizBuild.label)")
+            } icon: {
+                menuBarLogo
             }
         }
         .commands {

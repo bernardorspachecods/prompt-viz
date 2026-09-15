@@ -1,9 +1,11 @@
 # Contexto da documentação
 
-Esta pasta contém a documentação durável do produto.
+Esta pasta descreve o produto e a implementação que existem atualmente.
 
-- [`vision.md`](vision.md): intenção, experiência, escopo e limites do produto.
-- [`architecture.md`](architecture.md): módulos, fronteiras, contratos técnicos e riscos.
-- [`current-state.md`](current-state.md): comportamento verificado, limitações e evidência.
+- [`produto/CONTEXT.md`](produto/CONTEXT.md): requisitos, fluxos e interface
+  observáveis na app.
+- [`tecnico/CONTEXT.md`](tecnico/CONTEXT.md): arquitetura e fronteiras técnicas
+  implementadas.
 
-As decisões de trabalho futuro ficam em [`../PLAN.md`](../PLAN.md); os documentos desta pasta descrevem apenas a responsabilidade indicada no mapa acima.
+O código e os contratos executáveis são a autoridade para os detalhes
+diretamente legíveis.

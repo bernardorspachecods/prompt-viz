@@ -8,10 +8,10 @@ Este ficheiro orienta a repo-mãe `prompt-viz`.
   dependências Swift.
 - [`Sources/CONTEXT.md`](Sources/CONTEXT.md) — fronteiras dos targets Swift e
   respetivos contextos locais.
-- [`docs/CONTEXT.md`](docs/CONTEXT.md) — mapa da documentação durável; os
-  documentos específicos de produto e arquitetura são orientados a partir daí.
+- [`Assets/CONTEXT.md`](Assets/CONTEXT.md) — assets de identidade visual da app.
+- [`docs/CONTEXT.md`](docs/CONTEXT.md) — mapa da documentação atual do produto e
+  da implementação.
 - [`scripts/CONTEXT.md`](scripts/CONTEXT.md) — build e execução local.
-- [`PLAN.md`](PLAN.md) — trabalho futuro decidido para a repo.
 - [`AGENTS.md`](AGENTS.md) — regra específica para fechar rondas que alterem a
   app.
 
