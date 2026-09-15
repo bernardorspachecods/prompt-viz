@@ -2,11 +2,7 @@
 
 Compositor local de prompts para sessões do Codex no Terminal.app do macOS.
 
-Prompt Viz é uma ferramenta pessoal e local para compor prompts e entregá-las a sessões do Codex no Terminal.app. A intenção completa do produto está em [docs/vision.md](docs/vision.md).
-
-## Estado
-
-O estado funcional verificável está em [docs/current-state.md](docs/current-state.md).
+Prompt Viz é uma ferramenta pessoal e local para compor prompts e entregá-las a sessões do Codex no Terminal.app.
 
 ## Executar
 
@@ -33,10 +29,3 @@ swift run PromptVizContractRunner
 ```
 
 O contract runner valida a lógica pura de templates, workspaces e snippets sem depender de uma janela gráfica ou de permissões de Acessibilidade.
-
-## Documentação
-
-- [Visão do produto](docs/vision.md)
-- [Arquitetura técnica](docs/architecture.md)
-- [Estado atual da aplicação](docs/current-state.md)
-- [Plano de evolução](PLAN.md)

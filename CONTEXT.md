@@ -1,23 +1,19 @@
-# Contexto da repo
+# Contexto do repositório
 
-Prompt Viz é uma aplicação macOS nativa para compor prompts e entregá-las a sessões do Codex abertas no Terminal.app.
+Este ficheiro orienta a repo-mãe `prompt-viz`.
 
-## Entradas
+## Estrutura
 
-- `README.md`: instalação e utilização pública.
-- `Sources/PromptViz`: shell SwiftUI, automação do Terminal.app e estado da aplicação.
-- `Sources/PromptVizCore`: domínio puro, workspaces, snippets e parser do input Codex.
-- `Sources/PromptVizContractRunner`: contratos executáveis sem UI.
-- `scripts`: build e execução local.
-- `docs`: visão, arquitetura e estado verificado.
+- [`Package.swift`](Package.swift) — manifesto, produtos, targets e
+  dependências Swift.
+- [`Sources/CONTEXT.md`](Sources/CONTEXT.md) — fronteiras dos targets Swift e
+  respetivos contextos locais.
+- [`docs/CONTEXT.md`](docs/CONTEXT.md) — mapa da documentação durável; os
+  documentos específicos de produto e arquitetura são orientados a partir daí.
+- [`scripts/CONTEXT.md`](scripts/CONTEXT.md) — build e execução local.
+- [`PLAN.md`](PLAN.md) — trabalho futuro decidido para a repo.
+- [`AGENTS.md`](AGENTS.md) — regra específica para fechar rondas que alterem a
+  app.
 
-## Fontes de verdade
-
-| Pergunta | Documento |
-|---|---|
-| O que o produto pretende fazer? | [`docs/vision.md`](docs/vision.md) |
-| Como está desenhado tecnicamente? | [`docs/architecture.md`](docs/architecture.md) |
-| O que funciona comprovadamente hoje? | [`docs/current-state.md`](docs/current-state.md) |
-| Que trabalho futuro foi decidido? | [`PLAN.md`](PLAN.md) |
-
-Os contextos locais explicam apenas as fronteiras da respetiva pasta e apontam para estes documentos quando necessário.
+`dist/`, `.build/` e `.swiftpm/` são outputs ou estado gerado; não são entradas
+de desenvolvimento nem devem receber contexto durável.
