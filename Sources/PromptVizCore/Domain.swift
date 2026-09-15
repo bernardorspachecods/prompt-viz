@@ -1,9 +1,60 @@
 import Foundation
 
-public enum TerminalInputRouting {
-    public static func shouldMirror(selectedTTY: String?, observedTTY: String?) -> Bool {
-        guard let selectedTTY, let observedTTY else { return false }
-        return selectedTTY == observedTTY
+public enum CodexTerminalInputParser {
+    private static let statusExpression = try? NSRegularExpression(
+        pattern: #"^.+ · .+ · Context [0-9]+% left$"#
+    )
+
+    public static func extractDraft(from screen: String) -> String? {
+        let lines = screen.components(separatedBy: "\n")
+        guard
+            let statusIndex = lines.lastIndex(where: isStatusLine),
+            let markerIndex = lines[..<statusIndex].lastIndex(where: isPromptMarker)
+        else { return nil }
+
+        var renderedLines = Array(lines[markerIndex..<statusIndex])
+        while renderedLines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            renderedLines.removeLast()
+        }
+
+        guard let firstLine = renderedLines.first,
+              let marker = firstLine.firstIndex(of: "›")
+        else { return nil }
+
+        var draft = String(firstLine[firstLine.index(after: marker)...])
+        if draft.hasPrefix("  ") {
+            draft.removeFirst(2)
+        } else if draft.first == " " {
+            draft.removeFirst()
+        }
+
+        for line in renderedLines.dropFirst() {
+            if line.hasPrefix("    ") {
+                draft.append("\n")
+                draft.append(contentsOf: line.dropFirst(4))
+            } else if line.hasPrefix("  ") {
+                draft.append(contentsOf: line.dropFirst(2))
+            } else {
+                draft.append("\n")
+                draft.append(contentsOf: line)
+            }
+        }
+
+        return draft
+    }
+
+    private static func isPromptMarker(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespaces).first == "›"
+    }
+
+    private static func isStatusLine(_ line: String) -> Bool {
+        let normalized = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalized.isEmpty,
+              let statusExpression
+        else { return false }
+
+        let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+        return statusExpression.firstMatch(in: normalized, range: range) != nil
     }
 }
 
@@ -82,6 +133,7 @@ public enum SkillManifestParser {
 public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public let terminalSessionID: String
+    public var terminalProcessIdentifier: Int32
     public var terminalTTY: String?
     public var title: String
     public var draft: String
@@ -91,6 +143,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     public init(
         id: UUID = UUID(),
         terminalSessionID: String,
+        terminalProcessIdentifier: Int32 = 0,
         terminalTTY: String? = nil,
         title: String,
         draft: String = "",
@@ -99,6 +152,7 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.terminalSessionID = terminalSessionID
+        self.terminalProcessIdentifier = terminalProcessIdentifier
         self.terminalTTY = terminalTTY
         self.title = title
         self.draft = draft
@@ -186,10 +240,14 @@ public final class WorkspaceStore {
     public func workspace(
         for terminalSessionID: String,
         title: String,
-        terminalTTY: String? = nil
+        terminalTTY: String? = nil,
+        terminalProcessIdentifier: Int32 = 0
     ) -> Workspace {
         if let index = workspaces.firstIndex(where: { $0.terminalSessionID == terminalSessionID }) {
             workspaces[index].title = title
+            if terminalProcessIdentifier != 0 {
+                workspaces[index].terminalProcessIdentifier = terminalProcessIdentifier
+            }
             if let terminalTTY {
                 workspaces[index].terminalTTY = terminalTTY
             }
@@ -198,6 +256,7 @@ public final class WorkspaceStore {
 
         let workspace = Workspace(
             terminalSessionID: terminalSessionID,
+            terminalProcessIdentifier: terminalProcessIdentifier,
             terminalTTY: terminalTTY,
             title: title,
             createdAt: now()

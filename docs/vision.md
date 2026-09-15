@@ -34,10 +34,10 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 - Uma única janela da app apresenta os workspaces numa barra nativa de tabs do macOS.
 - Cada workspace mantém o seu próprio rascunho.
 - `Ctrl+Tab` avança entre workspaces e `Ctrl+Shift+Tab` volta ao anterior.
-- A linha atualmente escrita no `zsh` do tab ativo é sincronizada em tempo real para o editor do workspace correspondente.
+- Ao abrir o compositor, a prompt atualmente escrita na TUI do Codex é capturada para o editor do workspace correspondente.
 - Ao voltar a um tab, o rascunho desse tab continua disponível.
 - Ao fechar o tab do Terminal, o workspace associado desaparece.
-- A app não lê nem interpreta o estado interno do Codex.
+- A app lê apenas o texto renderizado da prompt e não interpreta o estado interno, histórico ou disponibilidade do Codex.
 
 ### Snippets e templates
 
@@ -80,7 +80,7 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 - Reescrita ou avaliação de prompts por IA.
 - Cloud sync, contas e colaboração.
 - Histórico de prompts.
-- Deteção semântica do estado do Codex.
+- Deteção semântica de que o Codex está pronto para receber input.
 - Distribuição pela App Store.
 
 ## Evolução futura

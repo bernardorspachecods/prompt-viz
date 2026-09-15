@@ -14,10 +14,10 @@ struct PromptVizContractRunner {
         do {
             try templateContracts()
             try workspaceContracts()
-            try terminalInputRoutingContracts()
+            try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (16 checks)")
+            print("PromptViz contracts: PASS (18 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -44,17 +44,37 @@ struct PromptVizContractRunner {
 
     private static func workspaceContracts() throws {
         let store = WorkspaceStore(now: { Date(timeIntervalSince1970: 100) })
-        let first = store.workspace(for: "terminal-tab-a", title: "Codex A")
-        let reused = store.workspace(for: "terminal-tab-a", title: "Codex A atualizado")
-        let second = store.workspace(for: "terminal-tab-b", title: "Codex B")
+        let first = store.workspace(
+            for: "/dev/ttys001",
+            title: "Codex A",
+            terminalTTY: "/dev/ttys001",
+            terminalProcessIdentifier: 101
+        )
+        let reused = store.workspace(
+            for: "/dev/ttys001",
+            title: "Codex A atualizado",
+            terminalTTY: "/dev/ttys001",
+            terminalProcessIdentifier: 101
+        )
+        let second = store.workspace(
+            for: "/dev/ttys002",
+            title: "Codex B",
+            terminalTTY: "/dev/ttys002",
+            terminalProcessIdentifier: 101
+        )
 
         try check(first.id == reused.id, "same terminal session reuses workspace")
         try check(store.workspace(id: first.id)?.title == "Codex A atualizado", "workspace title follows active session")
+        try check(store.workspaces.count == 2, "different tabs in one Terminal window keep separate workspaces")
+        try check(
+            store.workspace(id: first.id)?.terminalProcessIdentifier == 101,
+            "workspace keeps the Terminal process identifier separately from the tab identity"
+        )
         store.updateDraft("Prompt A", for: first.id)
         store.updateDraft("Prompt B", for: second.id)
         try check(store.workspace(id: first.id)?.draft == "Prompt A", "workspace A keeps its draft")
         try check(store.workspace(id: second.id)?.draft == "Prompt B", "workspace B keeps its draft")
-        store.removeWorkspace(for: "terminal-tab-a")
+        store.removeWorkspace(for: "/dev/ttys001")
         try check(store.workspace(id: first.id) == nil, "closed terminal session removes workspace")
     }
 
@@ -68,24 +88,34 @@ struct PromptVizContractRunner {
         try check(library.search("BIAS").map(\.title) == ["Sem bias"], "snippet search ignores case")
     }
 
-    private static func terminalInputRoutingContracts() throws {
+    private static func codexTerminalInputContracts() throws {
+        let screen = """
+        output anterior
+        ──────────────────────────────────────────────────────────────────────────────
+
+        ›  PROMPT_VIZ_BEGIN
+            primeira linha\u{20}
+          continua na mesma linha
+            terceira linha
+
+          gpt-5.6-luna high · prompt-viz · Context 70% left
+
+        """
+
         try check(
-            TerminalInputRouting.shouldMirror(
-                selectedTTY: "/dev/ttys001",
-                observedTTY: "/dev/ttys001"
-            ),
-            "input from the selected terminal is mirrored"
+            CodexTerminalInputParser.extractDraft(from: screen) ==
+                "PROMPT_VIZ_BEGIN\nprimeira linha continua na mesma linha\nterceira linha",
+            "Codex input parser preserves real newlines and joins visual wraps"
         )
         try check(
-            !TerminalInputRouting.shouldMirror(
-                selectedTTY: "/dev/ttys001",
-                observedTTY: "/dev/ttys002"
-            ),
-            "input from another terminal is ignored"
+            CodexTerminalInputParser.extractDraft(
+                from: "›  \n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+            ) == "",
+            "Codex input parser recognizes an empty draft"
         )
         try check(
-            !TerminalInputRouting.shouldMirror(selectedTTY: nil, observedTTY: "/dev/ttys001"),
-            "input is ignored without an associated workspace"
+            CodexTerminalInputParser.extractDraft(from: "terminal output only") == nil,
+            "Codex input parser refuses an unrecognized terminal screen"
         )
     }
 

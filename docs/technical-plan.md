@@ -2,7 +2,7 @@
 
 Este documento transforma a [visão atual](vision.md) num plano de implementação. `vision.md` é a autoridade para produto e UX; este documento é a autoridade para arquitetura, estado técnico e validação.
 
-## Estado de implementação — 2026-09-11
+## Estado de implementação — 2026-09-15
 
 - `Package.swift` define um pacote executável macOS.
 - Os modelos puros de workspace e snippet estão implementados.
@@ -11,13 +11,15 @@ Este documento transforma a [visão atual](vision.md) num plano de implementaç�
 - `SnippetLibrary` fornece snippets globais, favoritos, pesquisa e operações de edição.
 - A biblioteca de snippets é persistida localmente em `UserDefaults`.
 - A shell SwiftUI está implementada com menu bar, janela principal, tabs nativas de workspaces, editor e editor de snippets/templates.
-- O adapter de automação do Terminal.app está implementado com identificação da app ativa, clipboard, `Cmd+V`, `Return` e pedido de Acessibilidade.
+- O adapter de automação do Terminal.app identifica a app ativa, lê o `AXTextArea` da janela e suporta clipboard, `Ctrl+A`/`Ctrl+K`, `Cmd+V`, `Return` e pedido de Acessibilidade.
 - O compositor pode ser aberto com `⌘E` ou pelo item do Prompt Viz na menu bar; não há UI persistente sobre as janelas do Terminal.app.
 - O empacotamento local usa a identidade Apple Development disponível neste Mac, em vez de assinatura ad-hoc, para manter estável a autorização de Acessibilidade entre builds.
 - Os nove primeiros snippets favoritos têm atalhos `⌘⌥1`–`⌘⌥9`.
-- A associação de janelas usa o `CGWindowID` e a app verifica periodicamente se as janelas ainda existem, removendo o workspace quando uma janela fecha.
-- A sessão focada usa o `CGWindowID` da janela do Terminal, obtido ao cruzar a janela AX com a lista de janelas do processo; se essa informação não estiver disponível, mantém-se o fallback por processo para permitir testar o envio.
-- A sincronização Terminal → editor usa um hook opcional de `zsh` (`scripts/prompt-viz-zsh.zsh`) que publica o `BUFFER` por TTY em `/tmp/prompt-viz`; a app associa esse TTY ao workspace através do dicionário AppleScript do Terminal.app.
+- A associação de sessões usa o TTY da tab do Terminal.app como identidade estável durante a vida da sessão; o PID do processo é guardado separadamente apenas para envio de teclas.
+- A app enumera periodicamente os TTYs de todas as tabs do Terminal.app através do seu dicionário AppleScript e remove o workspace quando o TTY deixa de existir.
+- A janela AX e o `CGWindowID` são usados apenas para geometria visual e contexto da janela, nunca para distinguir tabs. Se a tab selecionada não expuser um TTY, a app falha explicitamente em vez de usar um fallback por processo que possa confundir sessões.
+- A sincronização de input só fica ativa quando o Terminal.app está em primeiro plano e a tab selecionada corresponde ao workspace ligado; ao mudar para outra janela ou tab, a app suspende o espelhamento e retoma-o ao voltar à sessão original.
+- O Codex TUI é tratado separadamente: a app lê o conteúdo renderizado pelo `AXTextArea`, extrai o draft atual através de `CodexTerminalInputParser` e, no envio, substitui o input com `Ctrl+A`/`Ctrl+K` + paste. O envio só carrega `Return` depois de confirmar novamente o draft através da Acessibilidade.
 - O catálogo de skills é read-only: descobre manifests `SKILL.md`, expõe nome e descrição no compositor e insere apenas a invocação `$skill-name`, deixando o carregamento para o Codex.
 
 O executável pode ser empacotado como `dist/PromptViz.app` através de `scripts/build-app.sh`.
@@ -44,7 +46,7 @@ Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos pront
 
 ### `TerminalAutomation`
 
-É o seam entre a app e as APIs de Acessibilidade do macOS. Identifica a sessão ativa, foca-a e executa colar + `Return`. A lógica restante não depende de AppKit Accessibility e pode usar um fake no contract runner.
+É o seam entre a app e as APIs de Acessibilidade do macOS. Identifica a sessão ativa, captura o draft visível do Codex, foca a tab correta e executa substituição + `Return`. A lógica de parsing fica no domínio puro e pode usar um fake no contract runner.
 
 ## Fronteiras SwiftUI/AppKit
 
@@ -54,11 +56,25 @@ Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos pront
 
 A UI apresenta estado e envia comandos; não deve chamar diretamente `AXUIElement`, escrever na clipboard ou sintetizar teclas.
 O arranque não apresenta pedidos de permissão. A app tenta identificar o Terminal quando o utilizador abre o compositor e só oferece as Definições de Acessibilidade se a API devolver explicitamente que está desativada.
-No envio, a app coloca a prompt na clipboard e envia diretamente `Cmd+V` e `Return` ao processo do Terminal.app através de eventos de teclado direccionados ao PID. Assim a app depende apenas da autorização de Acessibilidade do próprio Prompt Viz e não do processo auxiliar `System Events`.
+No envio para o Codex, o adapter limpa o campo atual, cola o editor completo e confirma que o draft reconstruído corresponde ao texto esperado antes de enviar `Return`. Assim a app não acrescenta o editor ao texto que já estava na TUI.
+Antes do envio, o adapter seleciona explicitamente a tab cujo TTY pertence ao workspace, eleva essa janela do Terminal e só depois valida a sessão e publica as teclas.
+Enquanto uma superfície está em primeiro plano, ela é a proprietária temporária da edição. A app não aceita uma versão concorrente do Terminal durante uma atualização pendente; se a confirmação falhar, preserva o texto e bloqueia o envio.
+
+### Handoff do input Codex
+
+O `Workspace.draft` é capturado uma vez quando `⌘E` é usado e passa a ser propriedade do editor até ao envio.
+
+As invariantes são:
+
+- `⌘E` captura o último bloco iniciado por `›` e terminado pela linha de estado do Codex.
+- A parser remove a margem visual das linhas reais e junta continuações causadas por wrap.
+- As alterações posteriores existem apenas no editor da app até ao envio.
+- O envio substitui o conteúdo atual do campo e só envia `Return` depois da confirmação por Acessibilidade.
+- Qualquer divergência bloqueia o envio e preserva o texto do editor.
 
 ## Identificação de sessões
 
-O adapter usa a janela focada no Terminal.app e produz um identificador estável durante a vida dessa janela, preferindo o `CGWindowID` ao título (que pode mudar). O identificador e o título são dados do adapter; não devem vazar para as views como lógica de descoberta.
+O adapter lê a tab selecionada no Terminal.app e usa o seu TTY como identificador da sessão. O TTY e o PID são dados do adapter; não devem vazar para as views como lógica de descoberta. O título e a geometria da janela são apenas metadados de apresentação.
 
 Se a sessão deixar de existir, o adapter notifica o `WorkspaceStore`, que remove o workspace correspondente.
 
@@ -87,7 +103,7 @@ A integração de Acessibilidade para envio, a estabilidade do identificador de 
 
 ### Última validação local
 
-- `swift run PromptVizContractRunner` — PASS, 7 contratos.
+- `swift run PromptVizContractRunner` — PASS, 25 checks, incluindo parsing do input Codex.
 - `swift build --product PromptViz` — PASS.
 - `./scripts/build-app.sh` — PASS; produziu `dist/PromptViz.app` arm64.
 - `./scripts/build-app.sh` assina com uma identidade Apple Development estável; a identidade pode ser substituída por `PROMPT_VIZ_SIGNING_IDENTITY`.
@@ -96,7 +112,8 @@ A integração de Acessibilidade para envio, a estabilidade do identificador de 
 ## Riscos e limites
 
 - Acessibilidade é necessária para automatizar o Terminal.app.
-- A sincronização em tempo real requer a integração `zsh` instalada e autorização de Automação para ler o TTY do Terminal.app.
+- O Terminal.app expõe a TUI como um `AXTextArea` com histórico e layout visual, não como um campo Codex separado; a extração depende do formato atual da TUI.
+- Wraps visuais e novas linhas reais são distinguidos pelas margens observadas na TUI e exigem validação manual após atualizações do Codex.
 - A app não consegue garantir semanticamente que o Codex está pronto para receber input.
 - Alterar título ou estrutura de tabs pode afetar a identificação da sessão; o adapter deve encapsular essa instabilidade.
 - O envio deve falhar de forma explícita se não houver Terminal.app ou uma sessão-alvo válida.

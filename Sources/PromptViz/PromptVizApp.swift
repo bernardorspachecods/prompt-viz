@@ -5,7 +5,7 @@ import SwiftUI
 import PromptVizCore
 
 enum PromptVizBuild {
-    static let label = "MVP build 15"
+    static let label = "MVP build 16"
 }
 
 struct TextInsertionRequest: Equatable, Identifiable {
@@ -38,6 +38,9 @@ enum TerminalAutomationError: LocalizedError {
     case terminalWindowUnavailable
     case sessionChanged
     case sendFailed
+    case synchronizationPending
+    case synchronizationFailed
+    case codexInputUnavailable
     case automationFailed(String)
 
     var isAccessibilityNotTrusted: Bool {
@@ -64,6 +67,12 @@ enum TerminalAutomationError: LocalizedError {
             return "O tab do Terminal mudou. Volta a selecioná-lo e tenta novamente."
         case .sendFailed:
             return "Não foi possível enviar a prompt para o Terminal.app."
+        case .synchronizationPending:
+            return "A escrita ainda não foi confirmada no Terminal. Aguarda um instante antes de enviar."
+        case .synchronizationFailed:
+            return "A app não conseguiu confirmar que o texto chegou ao Terminal. O texto foi preservado e o envio ficou bloqueado."
+        case .codexInputUnavailable:
+            return "Não consegui localizar o campo de prompt do Codex nesta tab. Mantive o texto na app e não enviei nada."
         case .automationFailed(let details):
             return "O macOS não conseguiu enviar a prompt através do Terminal.app.\n\n\(details)"
         }
@@ -74,7 +83,7 @@ extension Notification.Name {
     static let promptVizOpenAccessibilitySettings = Notification.Name("promptVizOpenAccessibilitySettings")
 }
 
-final class TerminalAutomation {
+final class TerminalAutomation: @unchecked Sendable {
     var isTerminalFrontmost: Bool {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal"
     }
@@ -101,24 +110,56 @@ final class TerminalAutomation {
             &focusedWindow
         )
 
-        guard result == .success, let focusedWindow else {
-            return try fallbackSession(for: application)
+        let title: String
+        if result == .success, let focusedWindow {
+            let windowElement = unsafeDowncast(focusedWindow, to: AXUIElement.self)
+            title = attributeString(windowElement, kAXTitleAttribute as CFString) ?? "Terminal"
+        } else {
+            title = "Terminal"
         }
 
-        let windowElement = unsafeDowncast(focusedWindow, to: AXUIElement.self)
-        let title = attributeString(windowElement, kAXTitleAttribute as CFString) ?? "Terminal"
-        let windowIdentifier = windowNumber(for: windowElement, title: title, application: application)
-            .map { "window-\($0)" }
-            ?? attributeString(windowElement, kAXIdentifierAttribute as CFString)
-        let sessionID = "\(application.processIdentifier):\(windowIdentifier ?? title)"
-        let tty = try terminalTTY(for: application)
+        guard let tty = try terminalTTY() else {
+            throw TerminalAutomationError.terminalWindowUnavailable
+        }
 
         return TerminalSession(
-            id: sessionID,
+            id: tty,
             title: title,
             processIdentifier: application.processIdentifier,
             tty: tty
         )
+    }
+
+    func activeCodexDraft() throws -> String {
+        guard isTerminalFrontmost else {
+            throw TerminalAutomationError.terminalNotActive
+        }
+
+        let application = NSWorkspace.shared.frontmostApplication
+        guard let application, application.bundleIdentifier == "com.apple.Terminal" else {
+            throw TerminalAutomationError.terminalNotActive
+        }
+
+        let appElement = AXUIElementCreateApplication(application.processIdentifier)
+        var focusedWindow: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedWindow
+        ) == .success,
+        let focusedWindow
+        else {
+            throw TerminalAutomationError.codexInputUnavailable
+        }
+
+        let windowElement = unsafeDowncast(focusedWindow, to: AXUIElement.self)
+        guard let screen = accessibilityTextValue(in: windowElement),
+              let draft = CodexTerminalInputParser.extractDraft(from: screen)
+        else {
+            throw TerminalAutomationError.codexInputUnavailable
+        }
+
+        return draft
     }
 
     func activeTerminalWindowFrame() -> CGRect? {
@@ -146,84 +187,109 @@ final class TerminalAutomation {
     }
 
     func liveSessionIDs() -> Set<String>? {
-        let terminalApplications = NSRunningApplication.runningApplications(
-            withBundleIdentifier: "com.apple.Terminal"
-        )
-        let terminalPIDs = Set(terminalApplications.map(\.processIdentifier))
+        let source = """
+        tell application "Terminal"
+            set allTTYS to {}
+            repeat with terminalWindow in windows
+                repeat with terminalTab in tabs of terminalWindow
+                    set tabTTY to tty of terminalTab
+                    if tabTTY is not missing value then
+                        set end of allTTYS to (tabTTY as text)
+                    end if
+                end repeat
+            end repeat
+            return allTTYS
+        end tell
+        """
 
-        guard
-            let windowInfo = CGWindowListCopyWindowInfo(
-                .optionAll,
-                kCGNullWindowID
-            ) as? [[String: Any]]
-        else { return nil }
+        guard let script = NSAppleScript(source: source) else { return nil }
 
-        return Set(windowInfo.compactMap { info in
-            guard
-                let ownerPID = info[kCGWindowOwnerPID as String] as? NSNumber,
-                terminalPIDs.contains(ownerPID.int32Value),
-                let number = info[kCGWindowNumber as String] as? NSNumber
-            else { return nil }
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        guard error == nil else { return nil }
 
-            return "\(ownerPID.int32Value):window-\(number.uint32Value)"
-        })
+        let indexes = result.numberOfItems == 0 ? [] : Array(1...result.numberOfItems)
+        return Set(indexes.compactMap { index in
+            result.atIndex(index)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.filter { !$0.isEmpty })
     }
 
-    private func fallbackSession(for application: NSRunningApplication) throws -> TerminalSession {
-        TerminalSession(
-            id: "\(application.processIdentifier):fallback",
-            title: "Terminal.app",
-            processIdentifier: application.processIdentifier,
-            tty: try terminalTTY(for: application)
-        )
-    }
-
-    func send(_ text: String, to expectedSession: TerminalSession) throws {
-        guard !text.isEmpty else { return }
+    func sendCodexInputAndReturn(_ buffer: String, to expectedSession: TerminalSession) throws {
+        guard let expectedTTY = expectedSession.tty else {
+            throw TerminalAutomationError.sessionChanged
+        }
 
         guard
             let application = NSRunningApplication(processIdentifier: expectedSession.processIdentifier),
             application.activate(options: [.activateIgnoringOtherApps])
         else { throw TerminalAutomationError.sendFailed }
 
+        try selectTab(tty: expectedTTY)
+        Thread.sleep(forTimeInterval: 0.15)
+
         let activeSession = try activeSession()
         guard activeSession.id == expectedSession.id else {
             throw TerminalAutomationError.sessionChanged
         }
 
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        guard pasteboard.setString(text, forType: .string) else {
-            throw TerminalAutomationError.sendFailed
-        }
-
-        try sendPasteAndReturn(to: expectedSession.processIdentifier)
-    }
-
-    private func sendPasteAndReturn(to processIdentifier: pid_t) throws {
         guard AXIsProcessTrusted() else {
             throw TerminalAutomationError.accessibilityNotTrusted
         }
 
-        // Give Terminal time to become frontmost after activate().
-        Thread.sleep(forTimeInterval: 0.15)
-
-        guard
-            let pasteDown = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: true),
-            let pasteUp = CGEvent(keyboardEventSource: nil, virtualKey: 9, keyDown: false),
-            let returnDown = CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: true),
-            let returnUp = CGEvent(keyboardEventSource: nil, virtualKey: 36, keyDown: false)
-        else {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setString(buffer, forType: .string) else {
             throw TerminalAutomationError.sendFailed
         }
 
-        pasteDown.flags = .maskCommand
-        pasteUp.flags = .maskCommand
-        pasteDown.postToPid(processIdentifier)
-        pasteUp.postToPid(processIdentifier)
-        Thread.sleep(forTimeInterval: 0.05)
-        returnDown.postToPid(processIdentifier)
-        returnUp.postToPid(processIdentifier)
+        postKey(virtualKey: 0, flags: .maskControl, to: expectedSession.processIdentifier)
+        postKey(virtualKey: 40, flags: .maskControl, to: expectedSession.processIdentifier)
+        postKey(virtualKey: 9, flags: .maskCommand, to: expectedSession.processIdentifier)
+
+        let deadline = Date().addingTimeInterval(1.5)
+        while Date() < deadline {
+            if (try? activeCodexDraft()) == buffer {
+                postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.08)
+        }
+
+        throw TerminalAutomationError.synchronizationFailed
+    }
+
+    func selectTab(tty: String) throws {
+        let escapedTTY = tty
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let source = """
+        tell application "Terminal"
+            repeat with terminalWindow in windows
+                repeat with terminalTab in tabs of terminalWindow
+                    if (tty of terminalTab as text) is "\(escapedTTY)" then
+                        set selected of terminalTab to true
+                        set index of terminalWindow to 1
+                        return true
+                    end if
+                end repeat
+            end repeat
+            return false
+        end tell
+        """
+
+        guard let script = NSAppleScript(source: source) else {
+            throw TerminalAutomationError.automationNotTrusted
+        }
+
+        var error: NSDictionary?
+        let result = script.executeAndReturnError(&error)
+        guard error == nil else {
+            throw TerminalAutomationError.automationNotTrusted
+        }
+
+        guard result.booleanValue else {
+            throw TerminalAutomationError.sessionChanged
+        }
     }
 
     private func attributeString(_ element: AXUIElement, _ attribute: CFString) -> String? {
@@ -232,7 +298,44 @@ final class TerminalAutomation {
         return value as? String
     }
 
-    private func terminalTTY(for application: NSRunningApplication) throws -> String? {
+    private func accessibilityTextValue(in element: AXUIElement) -> String? {
+        if attributeString(element, kAXRoleAttribute as CFString) == kAXTextAreaRole,
+           let value = attributeString(element, kAXValueAttribute as CFString) {
+            return value
+        }
+
+        var childrenValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            element,
+            kAXChildrenAttribute as CFString,
+            &childrenValue
+        ) == .success,
+        let childrenValue,
+        let children = childrenValue as? [AXUIElement]
+        else { return nil }
+
+        for child in children {
+            if let value = accessibilityTextValue(in: child) {
+                return value
+            }
+        }
+
+        return nil
+    }
+
+    private func postKey(virtualKey: CGKeyCode, flags: CGEventFlags, to processIdentifier: pid_t) {
+        guard
+            let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: virtualKey, keyDown: true),
+            let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: virtualKey, keyDown: false)
+        else { return }
+
+        keyDown.flags = flags
+        keyUp.flags = flags
+        keyDown.postToPid(processIdentifier)
+        keyUp.postToPid(processIdentifier)
+    }
+
+    private func terminalTTY() throws -> String? {
         let source = """
         tell application "Terminal"
             if (count of windows) is 0 then return ""
@@ -252,41 +355,6 @@ final class TerminalAutomation {
 
         let tty = result.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return tty.isEmpty ? nil : tty
-    }
-
-    private func windowNumber(
-        for element: AXUIElement,
-        title: String,
-        application: NSRunningApplication
-    ) -> CGWindowID? {
-        guard
-            let frame = accessibilityFrame(of: element),
-            let windowInfo = CGWindowListCopyWindowInfo(
-                [.optionOnScreenOnly, .excludeDesktopElements],
-                kCGNullWindowID
-            ) as? [[String: Any]]
-        else { return nil }
-
-        let candidates: [(windowNumber: CGWindowID, score: CGFloat)] = windowInfo.compactMap {
-            (info) -> (windowNumber: CGWindowID, score: CGFloat)? in
-            guard
-                let ownerPID = info[kCGWindowOwnerPID as String] as? NSNumber,
-                ownerPID.intValue == Int(application.processIdentifier),
-                let number = info[kCGWindowNumber as String] as? NSNumber,
-                let bounds = info[kCGWindowBounds as String] as? NSDictionary,
-                let candidateFrame = CGRect(dictionaryRepresentation: bounds)
-            else { return nil }
-
-            let titlePenalty: CGFloat = (info[kCGWindowName as String] as? String) == title ? 0 : 10_000
-            let distance = abs(candidateFrame.minX - frame.minX)
-                + abs(candidateFrame.minY - frame.minY)
-                + abs(candidateFrame.width - frame.width)
-                + abs(candidateFrame.height - frame.height)
-
-            return (number.uint32Value, titlePenalty + distance)
-        }
-
-        return candidates.min(by: { $0.score < $1.score })?.windowNumber
     }
 
     private func accessibilityFrame(of element: AXUIElement) -> CGRect? {
@@ -378,22 +446,18 @@ final class PromptVizModel: ObservableObject {
     let terminalAutomation = TerminalAutomation()
     private let snippetPersistence = LocalSnippetPersistence()
     let skillCatalog = SkillCatalog()
-    private let terminalInputSync = TerminalInputSyncController()
-    private let terminalKeyMirror = TerminalKeyMirror()
     private var workspaceMonitor: Timer?
     private var skillMonitor: Timer?
+    private var editorTextPublicationTimer: Timer?
+    private var isPruningWorkspaces = false
+    private var isRefreshingSkills = false
+    private(set) var isCapturingTerminalSession = false
     private(set) var activeSession: TerminalSession?
+    private var latestEditorText = ""
 
     private init() {
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
-        skills = skillCatalog.scan()
-        terminalInputSync.onBufferChanged = { [weak self] buffer in
-            self?.applyTerminalInput(buffer)
-        }
-        terminalKeyMirror.onBufferChanged = { [weak self] buffer in
-            self?.applyTerminalInput(buffer)
-        }
-        terminalInputSync.start()
+        skills = []
         sync()
         workspaceMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -413,10 +477,15 @@ final class PromptVizModel: ObservableObject {
     }
 
     func captureActiveTerminalSession() {
+        // Capture can switch to a new workspace, so persist the current editor
+        // before changing selectedWorkspaceID or letting the new tab activate.
+        saveCurrentDraft()
+        isCapturingTerminalSession = true
         shouldOfferAccessibilitySettings = false
         shouldOfferAutomationSettings = false
 
         guard terminalAutomation.isTerminalFrontmost else {
+            isCapturingTerminalSession = false
             errorMessage = TerminalAutomationError.terminalNotActive.localizedDescription
             openMainWindow()
             return
@@ -424,19 +493,21 @@ final class PromptVizModel: ObservableObject {
 
         do {
             let session = try terminalAutomation.activeSession()
+            let codexDraft = try terminalAutomation.activeCodexDraft()
             activeSession = session
             let workspace = workspaceStore.workspace(
                 for: session.id,
                 title: session.title,
-                terminalTTY: session.tty
+                terminalTTY: session.tty,
+                terminalProcessIdentifier: session.processIdentifier
             )
             selectedWorkspaceID = workspace.id
-            editorText = terminalKeyMirror.buffer(for: session.tty) ?? workspace.draft
-            terminalKeyMirror.reset(buffer: editorText, for: session.tty)
-            terminalInputSync.select(tty: session.tty)
+            setEditorText(codexDraft)
+            workspaceStore.updateDraft(codexDraft, for: workspace.id)
             sync()
             openMainWindow()
         } catch {
+            isCapturingTerminalSession = false
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
             shouldOfferAutomationSettings = (error as? TerminalAutomationError)?.isAutomationNotTrusted == true
@@ -446,17 +517,19 @@ final class PromptVizModel: ObservableObject {
 
     func select(_ workspace: Workspace) {
         saveCurrentDraft()
+        let workspace = workspaceStore.workspace(id: workspace.id) ?? workspace
         selectedWorkspaceID = workspace.id
-        editorText = workspace.draft
         activeSession = TerminalSession(
             id: workspace.terminalSessionID,
             title: workspace.title,
-            processIdentifier: workspace.terminalSessionID.split(separator: ":").first.flatMap { pid_t($0) } ?? 0,
+            processIdentifier: pid_t(workspace.terminalProcessIdentifier),
             tty: workspace.terminalTTY
         )
-        terminalKeyMirror.reset(buffer: editorText, for: workspace.terminalTTY)
-        terminalInputSync.select(tty: workspace.terminalTTY)
-        sync()
+        if let tty = workspace.terminalTTY {
+            try? terminalAutomation.selectTab(tty: tty)
+        }
+        setEditorText(workspace.draft)
+        sync(reconcileWindows: false)
     }
 
     func selectRelativeWorkspace(by offset: Int) {
@@ -484,30 +557,26 @@ final class PromptVizModel: ObservableObject {
 
         if let nextWorkspace = workspaceStore.workspaces.first {
             selectedWorkspaceID = nextWorkspace.id
-            editorText = nextWorkspace.draft
             activeSession = TerminalSession(
                 id: nextWorkspace.terminalSessionID,
                 title: nextWorkspace.title,
-                processIdentifier: nextWorkspace.terminalSessionID.split(separator: ":").first.flatMap { pid_t($0) } ?? 0,
+                processIdentifier: pid_t(nextWorkspace.terminalProcessIdentifier),
                 tty: nextWorkspace.terminalTTY
             )
-            terminalKeyMirror.reset(buffer: editorText, for: nextWorkspace.terminalTTY)
-            terminalInputSync.select(tty: nextWorkspace.terminalTTY)
+            setEditorText(nextWorkspace.draft)
         } else {
             selectedWorkspaceID = nil
             activeSession = nil
-            editorText = ""
-            terminalKeyMirror.reset(buffer: "")
-            terminalInputSync.select(tty: nil)
+            setEditorText("")
         }
 
         sync()
     }
 
     func updateEditorText(_ text: String) {
-        editorText = text
+        latestEditorText = text
         saveCurrentDraft()
-        sync()
+        scheduleEditorTextPublication()
     }
 
     func insert(_ snippet: Snippet) {
@@ -524,16 +593,18 @@ final class PromptVizModel: ObservableObject {
 
         if let range = editorText.range(of: expression, options: .regularExpression) {
             let tokenRange = NSRange(range, in: editorText)
-            editorText.replaceSubrange(range, with: invocation)
-            editorCursorLocationRequest = (editorText as NSString).length
+            var updatedText = latestEditorText
+            updatedText.replaceSubrange(range, with: invocation)
+            setEditorText(updatedText)
+            saveCurrentDraft()
+            editorCursorLocationRequest = (updatedText as NSString).length
             skillHighlightRequest = SkillHighlightRequest(
                 range: NSRange(
                     location: tokenRange.location,
                     length: invocation.dropLast().utf16.count
                 )
             )
-            saveCurrentDraft()
-            sync()
+            sync(reconcileWindows: false)
         } else {
             insertionRequest = TextInsertionRequest(text: invocation)
         }
@@ -554,9 +625,12 @@ final class PromptVizModel: ObservableObject {
         }
 
         do {
-            try terminalAutomation.send(editorText, to: activeSession)
-            updateEditorText("")
-            terminalKeyMirror.reset(buffer: "", for: activeSession.tty)
+            let textToSend = latestEditorText
+            guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            try terminalAutomation.sendCodexInputAndReturn(textToSend, to: activeSession)
+            setEditorText("")
+            saveCurrentDraft()
+            sync(reconcileWindows: false)
             openMainWindow()
         } catch {
             errorMessage = error.localizedDescription
@@ -589,73 +663,89 @@ final class PromptVizModel: ObservableObject {
         openMainWindowHandler?()
     }
 
+    func finishTerminalSessionCapture() {
+        isCapturingTerminalSession = false
+    }
+
     private func saveCurrentDraft() {
         guard let selectedWorkspaceID else { return }
-        workspaceStore.updateDraft(editorText, for: selectedWorkspaceID)
+        workspaceStore.updateDraft(latestEditorText, for: selectedWorkspaceID)
     }
 
-    private func applyTerminalInput(_ text: String) {
-        guard let tty = activeSession?.tty else { return }
-        terminalKeyMirror.reset(buffer: text, for: tty)
+    private func setEditorText(_ text: String) {
+        editorTextPublicationTimer?.invalidate()
+        latestEditorText = text
         editorText = text
-        saveCurrentDraft()
-        sync()
     }
 
-    private func sync() {
+    private func scheduleEditorTextPublication() {
+        editorTextPublicationTimer?.invalidate()
+        editorTextPublicationTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.editorText != self.latestEditorText else { return }
+                self.editorText = self.latestEditorText
+            }
+        }
+    }
+
+    private func sync(reconcileWindows: Bool = true) {
         workspaces = workspaceStore.workspaces
         snippets = snippetLibrary.snippets
-        workspacesDidChangeHandler?()
+        if reconcileWindows {
+            workspacesDidChangeHandler?()
+        }
     }
 
     private func refreshSkills() {
-        skills = skillCatalog.scan()
+        guard !isRefreshingSkills else { return }
+        isRefreshingSkills = true
+
+        Task { @MainActor [weak self] in
+            let discoveredSkills = await Task.detached(priority: .utility) {
+                SkillCatalog().scan()
+            }.value
+
+            guard let self else { return }
+            isRefreshingSkills = false
+            skills = discoveredSkills
+        }
     }
 
     private func pruneClosedWorkspaces() {
-        guard let liveSessionIDs = terminalAutomation.liveSessionIDs() else { return }
+        guard !isPruningWorkspaces, !workspaceStore.workspaces.isEmpty else { return }
+        isPruningWorkspaces = true
 
-        let closedSessionIDs = workspaceStore.workspaces
-            .map(\.terminalSessionID)
-            .filter { $0.contains(":window-") && !liveSessionIDs.contains($0) }
+        let automation = terminalAutomation
+        Task { @MainActor [weak self] in
+            let liveSessionIDs = await Task.detached(priority: .utility) {
+                automation.liveSessionIDs()
+            }.value
 
-        guard !closedSessionIDs.isEmpty else { return }
+            guard let self else { return }
+            isPruningWorkspaces = false
+            guard let liveSessionIDs else { return }
 
-        for sessionID in closedSessionIDs {
-            workspaceStore.removeWorkspace(for: sessionID)
+            let closedSessionIDs = workspaceStore.workspaces
+                .map(\.terminalSessionID)
+                .filter { !liveSessionIDs.contains($0) }
+
+            guard !closedSessionIDs.isEmpty else { return }
+
+            for sessionID in closedSessionIDs {
+                workspaceStore.removeWorkspace(for: sessionID)
+            }
+
+            if let selectedWorkspaceID,
+               workspaceStore.workspace(id: selectedWorkspaceID) == nil {
+                self.selectedWorkspaceID = nil
+                activeSession = nil
+                setEditorText("")
+            }
+
+            sync()
         }
-
-        if let selectedWorkspaceID,
-           workspaceStore.workspace(id: selectedWorkspaceID) == nil {
-            self.selectedWorkspaceID = nil
-            activeSession = nil
-            editorText = ""
-            terminalKeyMirror.reset(buffer: "")
-            terminalInputSync.select(tty: nil)
-        }
-
-        sync()
     }
 
-    func handleTerminalKeyEvent(_ event: TerminalKeyEvent) {
-        guard
-            terminalAutomation.isTerminalFrontmost,
-            let observedSession = try? terminalAutomation.activeSession(),
-            let observedTTY = observedSession.tty
-        else { return }
-
-        terminalKeyMirror.handle(event, for: observedTTY)
-
-        guard
-            let selectedTTY = activeSession?.tty,
-            TerminalInputRouting.shouldMirror(
-                selectedTTY: selectedTTY,
-                observedTTY: observedTTY
-            )
-        else { return }
-
-        applyTerminalInput(terminalKeyMirror.buffer(for: observedTTY) ?? "")
-    }
 }
 
 @main
@@ -692,7 +782,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowController: MainWindowController?
     private var keyboardMonitor: Any?
     private var workspaceSwitchMonitor: Any?
-    private var terminalInputMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let model = PromptVizModel.shared
@@ -732,23 +821,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return nil
         }
 
-        terminalInputMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal" else {
-                return
-            }
-
-            let isPaste = event.modifierFlags.contains(.command) && event.keyCode == 9
-            let terminalEvent = TerminalKeyEvent(
-                keyCode: event.keyCode,
-                characters: event.characters ?? "",
-                modifierRawValue: event.modifierFlags.rawValue,
-                pasteboardText: isPaste ? NSPasteboard.general.string(forType: .string) : nil
-            )
-
-            Task { @MainActor [weak model] in
-                model?.handleTerminalKeyEvent(terminalEvent)
-            }
-        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -758,9 +830,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let workspaceSwitchMonitor {
             NSEvent.removeMonitor(workspaceSwitchMonitor)
         }
-        if let terminalInputMonitor {
-            NSEvent.removeMonitor(terminalInputMonitor)
-        }
     }
 }
 
@@ -768,6 +837,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 final class MainWindowController: NSObject, NSWindowDelegate {
     private let model: PromptVizModel
     private var windowsByWorkspaceID: [UUID: NSWindow] = [:]
+    private var isReconciling = false
 
     init(model: PromptVizModel) {
         self.model = model
@@ -775,6 +845,9 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     func reconcileWindows() {
+        isReconciling = true
+        defer { isReconciling = false }
+
         let workspaceIDs = Set(model.workspaces.map(\.id))
 
         for (workspaceID, window) in windowsByWorkspaceID where !workspaceIDs.contains(workspaceID) {
@@ -798,6 +871,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        model.finishTerminalSessionCapture()
     }
 
     func selectRelativeTab(by offset: Int) {
@@ -861,7 +935,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
     private func activateWorkspace(for notification: Notification) {
         guard
+            !isReconciling,
+            !model.isCapturingTerminalSession,
             let window = notification.object as? NSWindow,
+            window.isKeyWindow,
             let workspaceID = workspaceID(for: window),
             let workspace = model.workspaces.first(where: { $0.id == workspaceID }),
             model.selectedWorkspaceID != workspaceID
@@ -886,8 +963,6 @@ struct ContentView: View {
     @State private var snippetSearch = ""
     @State private var showingSnippetEditor = false
     @State private var editingSnippet: Snippet?
-    @State private var hoveredSkillID: String?
-    @State private var selectedSkillIndex = -1
 
     private var composerTitle: String {
         let title = model.selectedWorkspace?.title ?? "Prompt Viz"
@@ -917,21 +992,6 @@ struct ContentView: View {
 
     private var visibleSnippets: [Snippet] {
         model.snippetLibrary.search(snippetSearch)
-    }
-
-    private var activeSkillQuery: String? {
-        guard let range = model.editorText.range(
-            of: #"\$[A-Za-z0-9_-]*$"#,
-            options: .regularExpression
-        ) else { return nil }
-
-        return String(model.editorText[range].dropFirst())
-    }
-
-    private var visibleSkills: [SkillDescriptor] {
-        model.skillCatalog.search(activeSkillQuery ?? "", in: model.skills)
-            .prefix(6)
-            .map { $0 }
     }
 
     var body: some View {
@@ -998,22 +1058,7 @@ struct ContentView: View {
 
                 Divider()
 
-                ZStack(alignment: .topLeading) {
-                    PromptTextEditor(
-                        text: $model.editorText,
-                        insertionRequest: $model.insertionRequest,
-                        cursorLocationRequest: $model.editorCursorLocationRequest,
-                        skillHighlightRequest: $model.skillHighlightRequest,
-                        onSkillKeyboardAction: handleSkillKeyboardAction
-                    )
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                    if activeSkillQuery != nil && !visibleSkills.isEmpty {
-                        skillSuggestions
-                            .padding(.top, 58)
-                            .padding(.leading, 14)
-                    }
-                }
+                PromptEditorArea(model: model)
                 .padding(12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1122,6 +1167,63 @@ struct ContentView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
     }
 
+}
+
+@MainActor
+struct PromptEditorArea: View {
+    @ObservedObject var model: PromptVizModel
+    @State private var text = ""
+    @State private var hoveredSkillID: String?
+    @State private var selectedSkillIndex = -1
+
+    private var activeSkillQuery: String? {
+        guard let range = text.range(
+            of: #"\$[A-Za-z0-9_-]*$"#,
+            options: .regularExpression
+        ) else { return nil }
+
+        return String(text[range].dropFirst())
+    }
+
+    private var visibleSkills: [SkillDescriptor] {
+        model.skillCatalog.search(activeSkillQuery ?? "", in: model.skills)
+            .prefix(6)
+            .map { $0 }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            PromptTextEditor(
+                text: Binding(
+                    get: { text },
+                    set: {
+                        text = $0
+                        model.updateEditorText($0)
+                    }
+                ),
+                insertionRequest: $model.insertionRequest,
+                cursorLocationRequest: $model.editorCursorLocationRequest,
+                skillHighlightRequest: $model.skillHighlightRequest,
+                onSkillKeyboardAction: handleSkillKeyboardAction
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if activeSkillQuery != nil && !visibleSkills.isEmpty {
+                skillSuggestions
+                    .padding(.top, 58)
+                    .padding(.leading, 14)
+            }
+        }
+        .onAppear {
+            text = model.editorText
+        }
+        .onChange(of: model.editorText) { newText in
+            if text != newText {
+                text = newText
+            }
+        }
+    }
+
     private var skillSuggestions: some View {
         VStack(alignment: .leading, spacing: 2) {
             Label("Skills", systemImage: "sparkles")
@@ -1132,7 +1234,7 @@ struct ContentView: View {
 
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(visibleSkills.enumerated()), id: \.element.id) { index, skill in
+                    ForEach(Array(visibleSkills.enumerated()), id: \.element.id) { index, skill in
                         Button {
                             hoveredSkillID = nil
                             selectedSkillIndex = index
@@ -1202,8 +1304,7 @@ struct ContentView: View {
             let index = selectedSkillIndex < 0
                 ? 0
                 : min(selectedSkillIndex, visibleSkills.count - 1)
-            let skill = visibleSkills[index]
-            model.selectSkill(skill)
+            model.selectSkill(visibleSkills[index])
             selectedSkillIndex = -1
         }
 
@@ -1246,8 +1347,10 @@ struct PromptTextEditor: NSViewRepresentable {
 
         if textView.string != text {
             let location = min(textView.selectedRange().location, text.utf16.count)
+            context.coordinator.isApplyingModelText = true
             textView.string = text
             textView.setSelectedRange(NSRange(location: location, length: 0))
+            context.coordinator.isApplyingModelText = false
         }
 
         if let cursorLocationRequest {
@@ -1299,8 +1402,10 @@ struct PromptTextEditor: NSViewRepresentable {
         let length = min(max(0, selectedRange.length), currentLength - location)
         let selection = NSRange(location: location, length: length)
         let updated = (textView.string as NSString).replacingCharacters(in: selection, with: insertionRequest.text)
+        context.coordinator.isApplyingModelText = true
         textView.string = updated
         textView.setSelectedRange(NSRange(location: selection.location + insertionRequest.text.utf16.count, length: 0))
+        context.coordinator.isApplyingModelText = false
         let requestID = insertionRequest.id
         DispatchQueue.main.async {
             guard self.insertionRequest?.id == requestID else { return }
@@ -1314,6 +1419,7 @@ struct PromptTextEditor: NSViewRepresentable {
         @Binding var text: String
         var lastInsertionID: UUID?
         var lastSkillHighlightID: UUID?
+        var isApplyingModelText = false
         var onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
 
         init(
@@ -1326,6 +1432,7 @@ struct PromptTextEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            guard !isApplyingModelText else { return }
             text = textView.string
         }
 
