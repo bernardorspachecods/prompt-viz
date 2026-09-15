@@ -18,6 +18,8 @@ Captura e edição estão verificadas no baseline. O envio está parcial; o deta
 - Depois de `⌘E`, o editor recebe o foco e o cursor é colocado no fim do draft; a app garante um espaço de continuação quando o AX não o devolve.
 - O fluxo observado não duplicou o texto já existente no terminal.
 - Workspaces usam o TTY da sessão como identidade e não o título da janela.
+- A troca entre workspaces da app atualiza-se imediatamente e pede a seleção assíncrona da tab do Terminal; o envio serializa e valida essa seleção antes de publicar teclas, evitando bloquear a interface ao alternar tabs.
+- Inventários incompletos, vazios ou com contagens diferentes entre tabs e TTYs não removem workspaces; uma sessão só é removida após duas ausências completas consecutivas. Esta proteção está coberta por contracts e aguarda validação manual com tabs Codex reais.
 - O código antigo de sincronização contínua via `zsh` foi removido.
 
 ## Parcial ou com falhas conhecidas
@@ -36,5 +38,5 @@ Captura e edição estão verificadas no baseline. O envio está parcial; o deta
 
 ```text
 swift build --product PromptViz       PASS
-swift run PromptVizContractRunner     PASS (18 checks)
+swift run PromptVizContractRunner     PASS (27 checks)
 ```

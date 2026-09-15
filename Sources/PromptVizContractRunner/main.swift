@@ -17,7 +17,7 @@ struct PromptVizContractRunner {
             try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (21 checks)")
+            print("PromptViz contracts: PASS (28 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -43,6 +43,16 @@ struct PromptVizContractRunner {
     }
 
     private static func workspaceContracts() throws {
+        let partialInventory = TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys001"],
+            tabCount: 2,
+            enumerationSucceeded: true
+        )
+        try check(
+            !partialInventory.isComplete,
+            "a raw inventory with missing TTYs is incomplete even when AppleScript reports success"
+        )
+
         let store = WorkspaceStore(now: { Date(timeIntervalSince1970: 100) })
         let first = store.workspace(
             for: "/dev/ttys001",
@@ -74,8 +84,58 @@ struct PromptVizContractRunner {
         store.updateDraft("Prompt B", for: second.id)
         try check(store.workspace(id: first.id)?.draft == "Prompt A", "workspace A keeps its draft")
         try check(store.workspace(id: second.id)?.draft == "Prompt B", "workspace B keeps its draft")
-        store.removeWorkspace(for: "/dev/ttys001")
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys002"],
+            isComplete: false
+        ))
+        try check(
+            store.workspaces.count == 2,
+            "an incomplete terminal inventory never removes an unfocused workspace"
+        )
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: [],
+            isComplete: true
+        ))
+        try check(
+            store.workspaces.count == 2,
+            "an empty terminal inventory never removes workspaces"
+        )
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys002"],
+            isComplete: true
+        ))
+        try check(
+            store.workspace(id: first.id) != nil,
+            "a single missing-session observation does not remove a workspace"
+        )
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys001", "/dev/ttys002"],
+            isComplete: true
+        ))
+        try check(
+            store.workspaces.count == 2,
+            "a session returning after a transient absence keeps both workspaces"
+        )
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys002"],
+            isComplete: true
+        ))
+        try check(
+            store.workspace(id: first.id) != nil,
+            "the first confirmed missing-session observation keeps the workspace"
+        )
+
+        store.removeClosedWorkspaces(using: TerminalSessionInventory(
+            sessionIDs: ["/dev/ttys002"],
+            isComplete: true
+        ))
         try check(store.workspace(id: first.id) == nil, "closed terminal session removes workspace")
+        try check(store.workspace(id: second.id) != nil, "present terminal session keeps its workspace")
     }
 
     private static func snippetContracts() throws {

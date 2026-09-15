@@ -24,7 +24,7 @@ Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos pront
 
 ### `TerminalAutomation`
 
-É o seam entre a app e as APIs de Acessibilidade do macOS. Identifica a sessão ativa, captura o draft visível do Codex, foca a tab correta e executa substituição + `Return`. A lógica de parsing fica no domínio puro e pode usar um fake no contract runner.
+É o seam entre a app e as APIs de Acessibilidade do macOS. Identifica a sessão ativa, captura o draft visível do Codex, foca a tab correta e executa substituição + `Return` no envio. A lógica de parsing fica no domínio puro e pode usar um fake no contract runner.
 
 ## Fronteiras SwiftUI/AppKit
 
@@ -48,11 +48,15 @@ As invariantes são:
 - O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
 - A seleção e validação da sessão acontecem antes de qualquer tecla ser publicada.
 
+### Troca de workspaces
+
+A troca entre workspaces da app atualiza imediatamente a seleção, o editor e a sessão lógica em memória. Pede também a seleção assíncrona da tab do Terminal numa fila serial, sem bloquear a interface. O envio usa a mesma fila de forma síncrona e valida a sessão imediatamente antes de publicar teclas.
+
 ## Identificação de sessões
 
 O adapter lê a tab selecionada no Terminal.app e usa o seu TTY como identificador da sessão. O TTY e o PID são dados do adapter; não devem vazar para as views como lógica de descoberta. O título e a geometria da janela são apenas metadados de apresentação.
 
-Se a sessão deixar de existir, o adapter notifica o `WorkspaceStore`, que remove o workspace correspondente.
+O inventário de tabs é válido para remoção apenas quando a enumeração percorreu todas as janelas e tabs sem erros, o número de TTYs lidos coincide com o número de tabs e o inventário não está vazio. Uma resposta incompleta ou vazia não remove workspaces. Uma sessão só é removida depois de duas ausências completas consecutivas; se reaparecer entretanto, a ausência pendente é cancelada.
 
 ## Persistência
 

@@ -78,6 +78,8 @@ extension Notification.Name {
 }
 
 final class TerminalAutomation: @unchecked Sendable {
+    private let tabSelectionQueue = DispatchQueue(label: "com.promptviz.terminal-tab-selection")
+
     var isTerminalFrontmost: Bool {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal"
     }
@@ -180,19 +182,29 @@ final class TerminalAutomation: @unchecked Sendable {
         return frontmostWindowFrame(for: application)
     }
 
-    func liveSessionIDs() -> Set<String>? {
+    func liveSessionInventory() -> TerminalSessionInventory? {
         let source = """
         tell application "Terminal"
             set allTTYS to {}
+            set inventoryComplete to true
+            set tabCount to 0
             repeat with terminalWindow in windows
                 repeat with terminalTab in tabs of terminalWindow
-                    set tabTTY to tty of terminalTab
-                    if tabTTY is not missing value then
-                        set end of allTTYS to (tabTTY as text)
-                    end if
+                    set tabCount to tabCount + 1
+                    set tabTTYText to ""
+                    try
+                        set tabTTYText to (tty of terminalTab as text)
+                        if tabTTYText is "" then
+                            set inventoryComplete to false
+                        else
+                            set end of allTTYS to tabTTYText
+                        end if
+                    on error
+                        set inventoryComplete to false
+                    end try
                 end repeat
             end repeat
-            return allTTYS
+            return {allTTYS, inventoryComplete, tabCount}
         end tell
         """
 
@@ -202,10 +214,27 @@ final class TerminalAutomation: @unchecked Sendable {
         let result = script.executeAndReturnError(&error)
         guard error == nil else { return nil }
 
-        let indexes = result.numberOfItems == 0 ? [] : Array(1...result.numberOfItems)
-        return Set(indexes.compactMap { index in
-            result.atIndex(index)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            result.numberOfItems >= 3,
+            let ttyResult = result.atIndex(1),
+            let completeResult = result.atIndex(2),
+            let tabCountResult = result.atIndex(3)
+        else { return nil }
+
+        let tabCount = Int(tabCountResult.int32Value)
+        guard tabCount >= 0 else { return nil }
+
+        let indexes = ttyResult.numberOfItems == 0 ? [] : Array(1...ttyResult.numberOfItems)
+        let sessionIDs = Set(indexes.compactMap { index in
+            ttyResult.atIndex(index)?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
         }.filter { !$0.isEmpty })
+
+        let inventory = TerminalSessionInventory(
+            sessionIDs: sessionIDs,
+            tabCount: tabCount,
+            enumerationSucceeded: completeResult.booleanValue
+        )
+        return inventory
     }
 
     func sendCodexInputAndReturn(_ buffer: String, to expectedSession: TerminalSession) throws {
@@ -243,7 +272,20 @@ final class TerminalAutomation: @unchecked Sendable {
         postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
     }
 
+    func requestTabSelection(tty: String) {
+        tabSelectionQueue.async { [weak self] in
+            guard let self else { return }
+            try? self.selectTabImmediately(tty: tty)
+        }
+    }
+
     func selectTab(tty: String) throws {
+        try tabSelectionQueue.sync {
+            try selectTabImmediately(tty: tty)
+        }
+    }
+
+    private func selectTabImmediately(tty: String) throws {
         let escapedTTY = tty
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -515,7 +557,7 @@ final class PromptVizModel: ObservableObject {
             tty: workspace.terminalTTY
         )
         if let tty = workspace.terminalTTY {
-            try? terminalAutomation.selectTab(tty: tty)
+            terminalAutomation.requestTabSelection(tty: tty)
         }
         setEditorText(workspace.draft)
         sync(reconcileWindows: false)
@@ -706,23 +748,22 @@ final class PromptVizModel: ObservableObject {
 
         let automation = terminalAutomation
         Task { @MainActor [weak self] in
-            let liveSessionIDs = await Task.detached(priority: .utility) {
-                automation.liveSessionIDs()
+            let inventory = await Task.detached(priority: .utility) {
+                automation.liveSessionInventory()
             }.value
 
             guard let self else { return }
             isPruningWorkspaces = false
-            guard let liveSessionIDs else { return }
+            guard let inventory, inventory.isComplete else { return }
 
-            let closedSessionIDs = workspaceStore.workspaces
+            let workspaceSessionIDs = workspaceStore.workspaces
                 .map(\.terminalSessionID)
-                .filter { !liveSessionIDs.contains($0) }
+            let missingSessionIDs = workspaceSessionIDs
+                .filter { !inventory.sessionIDs.contains($0) }
 
-            guard !closedSessionIDs.isEmpty else { return }
+            guard !missingSessionIDs.isEmpty else { return }
 
-            for sessionID in closedSessionIDs {
-                workspaceStore.removeWorkspace(for: sessionID)
-            }
+            workspaceStore.removeClosedWorkspaces(using: inventory)
 
             if let selectedWorkspaceID,
                workspaceStore.workspace(id: selectedWorkspaceID) == nil {

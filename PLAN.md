@@ -6,6 +6,14 @@ Este ficheiro só contém trabalho futuro explicitamente decidido. Não escolher
 
 Ainda não decidida.
 
+## Possibilidades futuras não priorizadas
+
+### Suporte a shells normais no Terminal.app
+
+Criar workspaces para sessões que não estejam a executar o Codex, mantendo o caminho Codex separado e sem tentar capturar automaticamente o comando da shell na primeira versão.
+
+Esta possibilidade não define a próxima feature.
+
 ## Como registar uma decisão
 
 Quando a próxima feature for acordada, adicionar:

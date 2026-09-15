@@ -168,6 +168,21 @@ public struct Workspace: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public struct TerminalSessionInventory: Equatable, Sendable {
+    public let sessionIDs: Set<String>
+    public let isComplete: Bool
+
+    public init(sessionIDs: Set<String>, isComplete: Bool) {
+        self.sessionIDs = sessionIDs
+        self.isComplete = isComplete
+    }
+
+    public init(sessionIDs: Set<String>, tabCount: Int, enumerationSucceeded: Bool) {
+        self.sessionIDs = sessionIDs
+        self.isComplete = enumerationSucceeded && tabCount >= 0 && sessionIDs.count == tabCount
+    }
+}
+
 public struct Snippet: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public var title: String
@@ -238,6 +253,7 @@ public enum TemplateEngine {
 public final class WorkspaceStore {
     public private(set) var workspaces: [Workspace] = []
     private let now: () -> Date
+    private var missingSessionObservations: [String: Int] = [:]
 
     public init(now: @escaping () -> Date = Date.init) {
         self.now = now
@@ -282,11 +298,37 @@ public final class WorkspaceStore {
         workspaces[index].updatedAt = now()
     }
 
-    public func removeWorkspace(for terminalSessionID: String) {
-        workspaces.removeAll { $0.terminalSessionID == terminalSessionID }
+    public func removeClosedWorkspaces(using inventory: TerminalSessionInventory) {
+        // Terminal can briefly expose an empty or partial snapshot while a tab
+        // is being selected. Such a snapshot is never evidence of closure.
+        guard inventory.isComplete, !inventory.sessionIDs.isEmpty else { return }
+
+        let liveSessionIDs = inventory.sessionIDs
+        for workspace in workspaces {
+            let sessionID = workspace.terminalSessionID
+            if liveSessionIDs.contains(sessionID) {
+                missingSessionObservations.removeValue(forKey: sessionID)
+            } else {
+                missingSessionObservations[sessionID, default: 0] += 1
+            }
+        }
+
+        let closedSessionIDs = Set(
+            missingSessionObservations
+                .filter { $0.value >= 2 }
+                .map(\.key)
+        )
+        guard !closedSessionIDs.isEmpty else { return }
+
+        workspaces.removeAll { closedSessionIDs.contains($0.terminalSessionID) }
+        for sessionID in closedSessionIDs {
+            missingSessionObservations.removeValue(forKey: sessionID)
+        }
     }
 
     public func removeWorkspace(id: UUID) {
+        guard let workspace = workspaces.first(where: { $0.id == id }) else { return }
+        missingSessionObservations.removeValue(forKey: workspace.terminalSessionID)
         workspaces.removeAll { $0.id == id }
     }
 }
