@@ -2,15 +2,11 @@
 
 Compositor local de prompts para sessões do Codex no Terminal.app do macOS.
 
-## Objetivo
-
-Reduzir a fricção entre escrever uma prompt, melhorá-la com snippets/templates e enviá-la para o tab correto do Terminal.app.
-
-O projeto é pessoal, local e começa focado em macOS.
+Prompt Viz é uma ferramenta pessoal e local para compor prompts e entregá-las a sessões do Codex no Terminal.app. A intenção completa do produto está em [docs/vision.md](docs/vision.md).
 
 ## Estado
 
-O núcleo inicial de workspaces, snippets e expansão de templates está implementado, juntamente com a shell SwiftUI, botão flutuante e integração inicial com o Terminal.app. A validação manual de tabs e permissões de Acessibilidade ainda falta.
+O estado funcional verificável está em [docs/current-state.md](docs/current-state.md).
 
 ## Executar
 
@@ -30,9 +26,6 @@ Para fechar instâncias antigas, recompilar e abrir a app numa só operação:
 ./scripts/run-prompt-viz.sh
 ```
 
-O fluxo atual lê a prompt em edição diretamente da TUI do Codex através da
-Acessibilidade do Terminal.app. Não é necessário instalar um hook no `zsh`.
-
 ## Validação automática
 
 ```bash
@@ -43,6 +36,7 @@ O contract runner valida a lógica pura de templates, workspaces e snippets sem 
 
 ## Documentação
 
-- [Visão e plano atual](docs/vision.md)
-- [Plano técnico inicial](docs/technical-plan.md)
-- [Índice da documentação](docs/README.md)
+- [Visão do produto](docs/vision.md)
+- [Arquitetura técnica](docs/architecture.md)
+- [Estado atual da aplicação](docs/current-state.md)
+- [Plano de evolução](PLAN.md)

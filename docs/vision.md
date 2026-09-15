@@ -1,4 +1,4 @@
-# Visão e plano atual
+# Visão do produto
 
 ## Objetivo
 
@@ -52,8 +52,6 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 
 ### Envio e privacidade
 
-- `Enviar` cola a prompt no tab-alvo e pressiona `Return` automaticamente.
-- O editor permanece aberto depois do envio e limpa o texto.
 - O estado do rascunho é guardado enquanto a sessão existe.
 - Não existe histórico de prompts enviadas por defeito.
 - Não existem contas, cloud, sincronização ou chamadas de IA.
@@ -67,11 +65,8 @@ Escrever prompts longas diretamente no terminal é desconfortável. O fluxo atua
 - Atalho global para abrir/focar a app.
 - Associação de workspaces a tabs/sessões do Terminal.app.
 - Rascunhos separados por workspace.
-- Biblioteca local global de snippets.
-- Snippets fixos, favoritos e pesquisa.
-- Templates com campos nomeados e navegação por `Tab`.
-- Envio por colar + `Return` através de Acessibilidade.
-- Limpeza do editor depois do envio.
+- Biblioteca local de snippets e templates.
+- Handoff do compositor para o Codex através de Acessibilidade.
 - Contract runner para regras puras sem dependências gráficas.
 
 ## Fora do escopo inicial
