@@ -1,6 +1,7 @@
 import Foundation
 
 public enum CodexTerminalInputParser {
+    private static let emptyComposerPlaceholder = "Ask Codex to do anything"
     private static let statusExpression = try? NSRegularExpression(
         pattern: #"^.+ · .+ · Context [0-9]+% left$"#
     )
@@ -40,7 +41,7 @@ public enum CodexTerminalInputParser {
             }
         }
 
-        return draft
+        return draft == emptyComposerPlaceholder ? "" : draft
     }
 
     private static func isPromptMarker(_ line: String) -> Bool {

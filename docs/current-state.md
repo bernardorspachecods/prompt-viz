@@ -12,6 +12,7 @@ Captura e edição estão verificadas no baseline. O envio está parcial; o deta
 - Contract runner do domínio.
 - `⌘E` identifica a tab ativa do Terminal.app por TTY.
 - A janela do Terminal expõe a TUI do Codex como `AXTextArea` com `AXValue`.
+- O placeholder `Ask Codex to do anything` não é tratado como texto de prompt.
 - Prompts multilineares são capturadas.
 - Wraps visuais de linhas longas foram observados e reconstruídos.
 - O texto capturado aparece rapidamente no editor da app.
@@ -38,5 +39,5 @@ Captura e edição estão verificadas no baseline. O envio está parcial; o deta
 
 ```text
 swift build --product PromptViz       PASS
-swift run PromptVizContractRunner     PASS (27 checks)
+swift run PromptVizContractRunner     PASS (29 checks)
 ```

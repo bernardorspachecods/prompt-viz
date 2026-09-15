@@ -17,7 +17,7 @@ struct PromptVizContractRunner {
             try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (28 checks)")
+            print("PromptViz contracts: PASS (29 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -172,6 +172,12 @@ struct PromptVizContractRunner {
                 from: "›  \n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
             ) == "",
             "Codex input parser recognizes an empty draft"
+        )
+        try check(
+            CodexTerminalInputParser.extractDraft(
+                from: "›  Ask Codex to do anything\n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+            ) == "",
+            "Codex input parser ignores the empty-composer placeholder"
         )
         try check(
             CodexTerminalInputParser.extractDraft(from: "terminal output only") == nil,
