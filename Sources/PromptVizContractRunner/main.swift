@@ -17,7 +17,7 @@ struct PromptVizContractRunner {
             try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (18 checks)")
+            print("PromptViz contracts: PASS (21 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -116,6 +116,20 @@ struct PromptVizContractRunner {
         try check(
             CodexTerminalInputParser.extractDraft(from: "terminal output only") == nil,
             "Codex input parser refuses an unrecognized terminal screen"
+        )
+        try check(
+            CodexTerminalInputParser.extractDraft(
+                from: "›  última palavra \n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+            ) == "última palavra ",
+            "Codex input parser preserves a trailing space"
+        )
+        try check(
+            CodexDraftEditor.prepareForContinuation("última palavra") == "última palavra ",
+            "captured drafts receive a continuation space"
+        )
+        try check(
+            CodexDraftEditor.prepareForContinuation("última palavra ") == "última palavra ",
+            "existing trailing spaces are not duplicated"
         )
     }
 

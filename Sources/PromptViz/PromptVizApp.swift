@@ -38,8 +38,6 @@ enum TerminalAutomationError: LocalizedError {
     case terminalWindowUnavailable
     case sessionChanged
     case sendFailed
-    case synchronizationPending
-    case synchronizationFailed
     case codexInputUnavailable
     case automationFailed(String)
 
@@ -67,10 +65,6 @@ enum TerminalAutomationError: LocalizedError {
             return "O tab do Terminal mudou. Volta a selecioná-lo e tenta novamente."
         case .sendFailed:
             return "Não foi possível enviar a prompt para o Terminal.app."
-        case .synchronizationPending:
-            return "A escrita ainda não foi confirmada no Terminal. Aguarda um instante antes de enviar."
-        case .synchronizationFailed:
-            return "A app não conseguiu confirmar que o texto chegou ao Terminal. O texto foi preservado e o envio ficou bloqueado."
         case .codexInputUnavailable:
             return "Não consegui localizar o campo de prompt do Codex nesta tab. Mantive o texto na app e não enviei nada."
         case .automationFailed(let details):
@@ -245,17 +239,8 @@ final class TerminalAutomation: @unchecked Sendable {
         postKey(virtualKey: 0, flags: .maskControl, to: expectedSession.processIdentifier)
         postKey(virtualKey: 40, flags: .maskControl, to: expectedSession.processIdentifier)
         postKey(virtualKey: 9, flags: .maskCommand, to: expectedSession.processIdentifier)
-
-        let deadline = Date().addingTimeInterval(1.5)
-        while Date() < deadline {
-            if (try? activeCodexDraft()) == buffer {
-                postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
-                return
-            }
-            Thread.sleep(forTimeInterval: 0.08)
-        }
-
-        throw TerminalAutomationError.synchronizationFailed
+        Thread.sleep(forTimeInterval: 0.2)
+        postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
     }
 
     func selectTab(tty: String) throws {
@@ -432,6 +417,7 @@ final class PromptVizModel: ObservableObject {
     @Published var editorText = ""
     @Published var insertionRequest: TextInsertionRequest?
     @Published var editorCursorLocationRequest: Int?
+    @Published var editorFocusRequest: UUID?
     @Published var skillHighlightRequest: SkillHighlightRequest?
     @Published var templateToFill: Snippet?
     @Published var errorMessage: String?
@@ -494,6 +480,7 @@ final class PromptVizModel: ObservableObject {
         do {
             let session = try terminalAutomation.activeSession()
             let codexDraft = try terminalAutomation.activeCodexDraft()
+            let editorDraft = CodexDraftEditor.prepareForContinuation(codexDraft)
             activeSession = session
             let workspace = workspaceStore.workspace(
                 for: session.id,
@@ -502,8 +489,10 @@ final class PromptVizModel: ObservableObject {
                 terminalProcessIdentifier: session.processIdentifier
             )
             selectedWorkspaceID = workspace.id
-            setEditorText(codexDraft)
-            workspaceStore.updateDraft(codexDraft, for: workspace.id)
+            setEditorText(editorDraft)
+            editorCursorLocationRequest = (editorDraft as NSString).length
+            editorFocusRequest = UUID()
+            workspaceStore.updateDraft(editorDraft, for: workspace.id)
             sync()
             openMainWindow()
         } catch {
@@ -1203,6 +1192,7 @@ struct PromptEditorArea: View {
                 ),
                 insertionRequest: $model.insertionRequest,
                 cursorLocationRequest: $model.editorCursorLocationRequest,
+                focusRequest: $model.editorFocusRequest,
                 skillHighlightRequest: $model.skillHighlightRequest,
                 onSkillKeyboardAction: handleSkillKeyboardAction
             )
@@ -1316,6 +1306,7 @@ struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var insertionRequest: TextInsertionRequest?
     @Binding var cursorLocationRequest: Int?
+    @Binding var focusRequest: UUID?
     @Binding var skillHighlightRequest: SkillHighlightRequest?
     let onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
 
@@ -1359,6 +1350,18 @@ struct PromptTextEditor: NSViewRepresentable {
             DispatchQueue.main.async {
                 guard self.cursorLocationRequest == cursorLocationRequest else { return }
                 self.cursorLocationRequest = nil
+            }
+        }
+
+        if let focusRequest,
+           context.coordinator.lastFocusRequestID != focusRequest {
+            context.coordinator.lastFocusRequestID = focusRequest
+            textView.window?.makeFirstResponder(textView)
+            let requestID = focusRequest
+            DispatchQueue.main.async {
+                guard self.focusRequest == requestID else { return }
+                textView.window?.makeFirstResponder(textView)
+                self.focusRequest = nil
             }
         }
 
@@ -1418,6 +1421,7 @@ struct PromptTextEditor: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         @Binding var text: String
         var lastInsertionID: UUID?
+        var lastFocusRequestID: UUID?
         var lastSkillHighlightID: UUID?
         var isApplyingModelText = false
         var onSkillKeyboardAction: (SkillKeyboardAction) -> Bool

@@ -11,17 +11,20 @@ let package = Package(
     targets: [
         .target(
             name: "PromptVizCore",
-            path: "Sources/PromptVizCore"
+            path: "Sources/PromptVizCore",
+            exclude: ["CONTEXT.md"]
         ),
         .executableTarget(
             name: "PromptViz",
             dependencies: ["PromptVizCore"],
-            path: "Sources/PromptViz"
+            path: "Sources/PromptViz",
+            exclude: ["CONTEXT.md"]
         ),
         .executableTarget(
             name: "PromptVizContractRunner",
             dependencies: ["PromptVizCore"],
-            path: "Sources/PromptVizContractRunner"
+            path: "Sources/PromptVizContractRunner",
+            exclude: ["CONTEXT.md"]
         )
     ]
 )

@@ -58,6 +58,13 @@ public enum CodexTerminalInputParser {
     }
 }
 
+public enum CodexDraftEditor {
+    public static func prepareForContinuation(_ draft: String) -> String {
+        guard !draft.isEmpty, draft.last?.isWhitespace != true else { return draft }
+        return draft + " "
+    }
+}
+
 public struct SkillDescriptor: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String

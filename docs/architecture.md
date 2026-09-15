@@ -43,9 +43,10 @@ As invariantes são:
 
 - `⌘E` captura o último bloco iniciado por `›` e terminado pela linha de estado do Codex.
 - A parser remove a margem visual das linhas reais e junta continuações causadas por wrap.
+- Depois da captura, o editor recebe o foco e o cursor fica no fim lógico do draft, com um espaço de continuação se o texto não terminar em whitespace.
 - As alterações posteriores existem apenas no editor da app até ao envio.
-- O envio substitui o conteúdo atual do campo e só envia `Return` depois da confirmação por Acessibilidade.
-- Qualquer divergência bloqueia o envio e preserva o texto do editor.
+- O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
+- A seleção e validação da sessão acontecem antes de qualquer tecla ser publicada.
 
 ## Identificação de sessões
 

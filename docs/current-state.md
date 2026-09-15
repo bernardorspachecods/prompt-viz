@@ -15,13 +15,15 @@ Captura e edição estão verificadas no baseline. O envio está parcial; o deta
 - Prompts multilineares são capturadas.
 - Wraps visuais de linhas longas foram observados e reconstruídos.
 - O texto capturado aparece rapidamente no editor da app.
+- Depois de `⌘E`, o editor recebe o foco e o cursor é colocado no fim do draft; a app garante um espaço de continuação quando o AX não o devolve.
 - O fluxo observado não duplicou o texto já existente no terminal.
 - Workspaces usam o TTY da sessão como identidade e não o título da janela.
 - O código antigo de sincronização contínua via `zsh` foi removido.
 
 ## Parcial ou com falhas conhecidas
 
-- A confirmação pós-paste falhou pelo menos uma vez com a mensagem “A app não conseguiu confirmar que o texto chegou ao Terminal”. Nesse caso não houve envio e o texto ficou preservado.
+- O envio agora valida a sessão antes de escrever, substitui o campo com `Ctrl+A` + `Ctrl+K` + paste e envia `Return` após uma breve pausa; esta alteração aguarda validação manual.
+- A versão anterior falhava ocasionalmente com a mensagem “A app não conseguiu confirmar que o texto chegou ao Terminal”; essa confirmação foi removida do caminho de envio.
 - O routing entre várias tabs/janelas ainda precisa de uma matriz de validação manual dedicada.
 
 ## Limites observados
