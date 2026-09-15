@@ -189,65 +189,20 @@ public struct Snippet: Identifiable, Codable, Equatable, Sendable {
     public var title: String
     public var body: String
     public var isFavorite: Bool
+    public var shortcutNumber: Int?
 
     public init(
         id: UUID = UUID(),
         title: String,
         body: String,
-        isFavorite: Bool = false
+        isFavorite: Bool = false,
+        shortcutNumber: Int? = nil
     ) {
         self.id = id
         self.title = title
         self.body = body
         self.isFavorite = isFavorite
-    }
-}
-
-public enum TemplateEngine {
-    private static let pattern = #"\{\{\s*([^{}]+?)\s*\}\}"#
-
-    public static func fieldNames(in template: String) -> [String] {
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(template.startIndex..<template.endIndex, in: template)
-        var names: [String] = []
-
-        expression.enumerateMatches(in: template, range: range) { match, _, _ in
-            guard
-                let match,
-                match.numberOfRanges > 1,
-                let nameRange = Range(match.range(at: 1), in: template)
-            else { return }
-
-            let name = String(template[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !name.isEmpty, !names.contains(name) {
-                names.append(name)
-            }
-        }
-
-        return names
-    }
-
-    public static func render(_ template: String, values: [String: String]) -> String {
-        guard let expression = try? NSRegularExpression(pattern: pattern) else { return template }
-        let range = NSRange(template.startIndex..<template.endIndex, in: template)
-        let rendered = NSMutableString(string: template)
-        let matches = expression.matches(in: template, range: range)
-
-        for match in matches.reversed() {
-            guard
-                match.numberOfRanges > 1,
-                let nameRange = Range(match.range(at: 1), in: template),
-                let replacementRange = Range(match.range, in: template)
-            else { continue }
-
-            let name = String(template[nameRange]).trimmingCharacters(in: .whitespacesAndNewlines)
-            rendered.replaceCharacters(
-                in: NSRange(replacementRange, in: template),
-                with: values[name] ?? ""
-            )
-        }
-
-        return String(rendered)
+        self.shortcutNumber = shortcutNumber
     }
 }
 
@@ -338,28 +293,36 @@ public final class SnippetLibrary {
     public private(set) var snippets: [Snippet]
 
     public init(snippets: [Snippet]? = nil) {
-        self.snippets = snippets ?? Self.makeDefaults()
+        var normalizedSnippets = (snippets ?? Self.makeDefaults())
+            .enumerated()
+            .sorted {
+                switch ($0.element.shortcutNumber, $1.element.shortcutNumber) {
+                case let (left?, right?):
+                    return left < right
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return $0.offset < $1.offset
+                }
+            }
+            .map(\.element)
+        Self.compactShortcuts(in: &normalizedSnippets)
+
+        self.snippets = normalizedSnippets
     }
 
     public var favorites: [Snippet] {
         snippets.filter(\.isFavorite)
     }
 
-    public func search(_ query: String) -> [Snippet] {
-        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-
-        guard !normalized.isEmpty else { return snippets }
-
-        return snippets.filter { snippet in
-            let haystack = "\(snippet.title) \(snippet.body)"
-                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            return haystack.contains(normalized)
-        }
-    }
-
-    public func add(_ snippet: Snippet) {
+    @discardableResult
+    public func add(_ snippet: Snippet) -> Bool {
+        guard snippets.count < 9 else { return false }
         snippets.append(snippet)
+        compactShortcuts()
+        return true
     }
 
     public func update(_ snippet: Snippet) {
@@ -369,16 +332,40 @@ public final class SnippetLibrary {
 
     public func remove(id: UUID) {
         snippets.removeAll { $0.id == id }
+        compactShortcuts()
+    }
+
+    public func moveSnippet(_ snippetID: UUID, toShortcutNumber shortcutNumber: Int) {
+        guard (1...9).contains(shortcutNumber),
+              let currentIndex = snippets.firstIndex(where: { $0.id == snippetID }),
+              !snippets.isEmpty
+        else { return }
+
+        let targetIndex = min(shortcutNumber - 1, snippets.count - 1)
+        guard currentIndex != targetIndex else { return }
+
+        let snippet = snippets.remove(at: currentIndex)
+        snippets.insert(snippet, at: targetIndex)
+        compactShortcuts()
+    }
+
+    private func compactShortcuts() {
+        Self.compactShortcuts(in: &snippets)
+    }
+
+    private static func compactShortcuts(in snippets: inout [Snippet]) {
+        for index in snippets.indices {
+            snippets[index].shortcutNumber = index < 9 ? index + 1 : nil
+        }
     }
 
     private static func makeDefaults() -> [Snippet] {
         [
-            Snippet(title: "Sê honesto", body: "Sê honesto sobre o que sabes e o que não sabes.", isFavorite: true),
-            Snippet(title: "Sem bias", body: "Analisa o problema sem bias e explicita os trade-offs.", isFavorite: true),
-            Snippet(title: "Não assumas", body: "Não assumas informação que não foi fornecida; indica as incertezas."),
-            Snippet(title: "Explica passo a passo", body: "Explica o raciocínio passo a passo, de forma clara e concisa."),
-            Snippet(title: "Revisa o resultado", body: "No final, revê o resultado e aponta possíveis falhas ou casos limite."),
-            Snippet(title: "Analisa código", body: "Analisa este código em {{linguagem}} com foco em {{objetivo}}.")
+            Snippet(title: "Be honest", body: "Be honest about what you know and what you don't know.", isFavorite: true),
+            Snippet(title: "No bias", body: "Analyze the problem without bias and make the trade-offs explicit.", isFavorite: true),
+            Snippet(title: "Don't assume", body: "Don't assume information that wasn't provided; call out uncertainties."),
+            Snippet(title: "Explain step by step", body: "Explain the reasoning step by step, clearly and concisely."),
+            Snippet(title: "Review the result", body: "At the end, review the result and point out possible failures or edge cases.")
         ]
     }
 }

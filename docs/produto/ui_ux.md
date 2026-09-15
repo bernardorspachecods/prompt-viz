@@ -2,8 +2,10 @@
 
 ## Janela e menu
 
-- A app aparece na barra de menus do macOS.
-- O menu contém a ação `Abrir compositor` e a ação para sair.
+- A app corre em segundo plano, sem aparecer na Dock ou na barra de menus do
+  macOS.
+- O compositor é aberto através de um atalho global, configurável nas
+  definições e predefinido como `⌘E`.
 - O compositor é uma janela nativa com tabs de workspaces.
 - A janela tem tamanho mínimo de `760 × 500` e abre com tamanho inicial de
   `980 × 680`.
@@ -16,20 +18,23 @@
 - O botão `Enviar` usa `⌘Return` e só fica ativo quando existe texto útil.
 - O editor recebe foco e posiciona o cursor no fim quando um rascunho é
   capturado.
+- As definições permitem ativar o arranque automático no login.
+- As definições permitem personalizar e repor o atalho global do compositor.
 
 ## Snippets
 
-- A barra lateral permite pesquisar snippets e criar um novo através de `+`.
-- Os favoritos aparecem primeiro, limitados aos nove primeiros favoritos, com
-  atalhos `⌘⌥1` a `⌘⌥9`.
+- A barra lateral mostra os snippets e permite criar um novo através de `+`, ao
+  lado da secção `Todos`.
+- Os favoritos aparecem primeiro, limitados aos nove primeiros favoritos.
+- Os templates aparecem diretamente em nove slots, de `⌘1` a `⌘9`.
+- Templates novos entram no próximo slot disponível e podem ser reordenados por
+  drag-and-drop.
 - Cada snippet pode ser inserido, editado ou apagado.
 - O editor de snippet contém nome, conteúdo e opção para o mostrar nos
   favoritos.
 
-## Templates e skills
+## Skills
 
-- Templates mostram os campos encontrados no conteúdo e focam o primeiro campo
-  ao abrir o formulário.
 - A pesquisa de skills aparece sobre o editor quando existe uma referência
   iniciada por `$`.
 - A sugestão selecionada fica realçada e pode ser escolhida pelo teclado.

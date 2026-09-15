@@ -28,4 +28,4 @@ Para fechar instâncias antigas, recompilar e abrir a app numa só operação:
 swift run PromptVizContractRunner
 ```
 
-O contract runner valida a lógica pura de templates, workspaces e snippets sem depender de uma janela gráfica ou de permissões de Acessibilidade.
+O contract runner valida a lógica pura de workspaces e snippets sem depender de uma janela gráfica ou de permissões de Acessibilidade.

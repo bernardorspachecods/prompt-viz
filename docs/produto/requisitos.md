@@ -11,6 +11,9 @@ atualmente. A implementação técnica está em
 Prompt Viz é uma aplicação nativa para macOS que abre um compositor de texto e
 o liga à sessão ativa do Codex no Terminal.app.
 
+- A app pode arrancar automaticamente no login e corre em segundo plano, sem
+  aparecer na Dock ou na barra de menus.
+
 ## Sessões e rascunhos
 
 - Cada sessão do Terminal.app aberta no compositor tem um workspace próprio.
@@ -29,13 +32,11 @@ o liga à sessão ativa do Codex no Terminal.app.
 - O envio substitui o campo do Codex, cola o texto e submete-o com `Return`.
 - Depois de um envio bem-sucedido, o editor fica vazio.
 
-## Snippets e templates
+## Snippets
 
 - A biblioteca de snippets é local à app.
 - Um snippet tem título, conteúdo e estado de favorito.
 - Snippets podem ser pesquisados, inseridos, criados, editados e apagados.
-- Conteúdos com campos `{{nome}}` são apresentados num formulário antes da
-  inserção.
 - Snippets favoritos têm uma área própria e atalhos de teclado.
 
 ## Skills

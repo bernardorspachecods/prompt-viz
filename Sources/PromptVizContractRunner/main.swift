@@ -12,12 +12,11 @@ struct ContractFailure: Error, CustomStringConvertible {
 struct PromptVizContractRunner {
     static func main() {
         do {
-            try templateContracts()
             try workspaceContracts()
             try codexTerminalInputContracts()
             try skillManifestContracts()
             try snippetContracts()
-            print("PromptViz contracts: PASS (29 checks)")
+        print("PromptViz contracts: PASS (28 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -26,20 +25,6 @@ struct PromptVizContractRunner {
 
     private static func check(_ condition: @autoclosure () -> Bool, _ message: String) throws {
         guard condition() else { throw ContractFailure(message: message) }
-    }
-
-    private static func templateContracts() throws {
-        let template = "Analisa este código em {{linguagem}} com foco em {{objetivo}}."
-        try check(TemplateEngine.fieldNames(in: template) == ["linguagem", "objetivo"], "template fields preserve order")
-        try check(
-            TemplateEngine.render(template, values: ["linguagem": "Swift", "objetivo": "segurança"]) ==
-                "Analisa este código em Swift com foco em segurança.",
-            "template values render"
-        )
-        try check(
-            TemplateEngine.fieldNames(in: "{{nome}} e {{nome}}") == ["nome"],
-            "repeated template fields are navigated once"
-        )
     }
 
     private static func workspaceContracts() throws {
@@ -145,7 +130,16 @@ struct PromptVizContractRunner {
         ])
 
         try check(library.favorites.map(\.title) == ["Sê honesto"], "favorites are filtered")
-        try check(library.search("BIAS").map(\.title) == ["Sem bias"], "snippet search ignores case")
+        try check(
+            library.snippets.compactMap(\.shortcutNumber) == [1, 2],
+            "templates occupy consecutive command-number shortcuts"
+        )
+
+        library.moveSnippet(library.snippets[0].id, toShortcutNumber: 2)
+        try check(
+            library.snippets.map(\.title) == ["Sem bias", "Sê honesto"],
+            "moving a template to a slot changes template order"
+        )
     }
 
     private static func codexTerminalInputContracts() throws {

@@ -3,7 +3,7 @@
 ## Abrir o compositor
 
 1. O Terminal.app fica em primeiro plano com uma sessão selecionada.
-2. O utilizador escolhe `Abrir compositor` no menu da app ou usa `⌘E`.
+2. O utilizador usa `⌘E` para abrir o compositor.
 3. A app identifica o TTY e o título da sessão ativa.
 4. A app lê o texto visível do compositor do Codex e cria ou reutiliza o
    workspace dessa sessão.
@@ -16,9 +16,8 @@ Acessibilidade ou Automação.
 
 ## Editar e inserir conteúdo
 
-O utilizador pode escrever diretamente no editor, inserir um snippet da barra
- lateral ou pesquisar snippets. Um snippet com campos abre o formulário de
- preenchimento e insere o texto já renderizado.
+O utilizador pode escrever diretamente no editor ou inserir um snippet da barra
+ lateral.
 
 Ao escrever `$`, o editor mostra as skills encontradas localmente. As sugestões
 podem ser escolhidas com o rato, `↑`, `↓` e `Return`.

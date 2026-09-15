@@ -8,9 +8,9 @@ O comportamento observável está em [`../produto/requisitos.md`](../produto/req
 ## Estrutura atual
 
 ```text
-App shell macOS
+App shell macOS (background agent)
   ├── WorkspaceStore ────────► drafts/sessions
-  ├── SnippetLibrary ────────► snippets/templates
+  ├── SnippetLibrary ────────► snippets
   ├── App state ─────────────► editor + insertion
   └── TerminalAutomation ────► focus + paste + Return
 ```
@@ -25,7 +25,7 @@ persistência nem os detalhes de identificação de tabs.
 
 ### `SnippetLibrary`
 
-Gere snippets globais, favoritos, pesquisa e edição. A UI recebe modelos prontos para apresentar e não implementa regras de pesquisa ou expansão.
+Gere snippets globais, favoritos e edição. A UI recebe modelos prontos para apresentar.
 
 ### `TerminalAutomation`
 
@@ -36,9 +36,9 @@ exercida pelo contract runner.
 
 ## Fronteiras SwiftUI/AppKit
 
-- **SwiftUI:** janela principal, tabs nativas de workspaces, editor, snippets, templates, estados e comandos.
-- **AppKit/Foundation:** menu bar, observação da app ativa, Acessibilidade do Terminal.app, clipboard e eventos de teclado.
-- **Domínio puro:** modelos, store, pesquisa e expansão de templates.
+- **SwiftUI:** janela principal, tabs nativas de workspaces, editor, snippets, estados e comandos.
+- **AppKit/Foundation:** observação da app ativa, Acessibilidade do Terminal.app, clipboard, eventos de teclado e registo do atalho global.
+- **Domínio puro:** modelos, store e pesquisa.
 
 A UI apresenta estado e envia comandos; não deve chamar diretamente `AXUIElement`, escrever na clipboard ou sintetizar teclas.
 O arranque não apresenta pedidos de permissão. A app tenta identificar o Terminal quando o utilizador abre o compositor e só oferece as Definições de Acessibilidade se a API devolver explicitamente que está desativada.
@@ -73,6 +73,8 @@ consecutivas; se reaparecer entretanto, o workspace é mantido.
 ## Persistência
 
 - Snippets são serializados em `UserDefaults.standard`.
+- Eventos e erros de runtime são registados em `~/Library/Logs/PromptViz.log` e
+  no sistema de logs do macOS.
 - Workspaces e rascunhos ficam em memória e não são restaurados entre execuções.
 - Não existe persistência de histórico de prompts enviadas.
 - A persistência de snippets está atrás de uma interface pequena para permitir

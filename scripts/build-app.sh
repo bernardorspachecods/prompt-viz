@@ -23,7 +23,6 @@ rm -rf "$app_dir"
 mkdir -p "$app_dir/Contents/MacOS" "$app_dir/Contents/Resources"
 cp "$build_dir/PromptViz" "$app_dir/Contents/MacOS/PromptViz"
 chmod +x "$app_dir/Contents/MacOS/PromptViz"
-cp "$project_root/Assets/PromptVizLogo.svg" "$app_dir/Contents/Resources/PromptVizLogo.svg"
 
 cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,7 +48,7 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
     <key>LSUIElement</key>
     <true/>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Prompt Viz envia prompts para a sessão ativa do Terminal.app.</string>
+    <string>Prompt Viz sends prompts to the active Terminal.app session.</string>
 </dict>
 </plist>
 PLIST

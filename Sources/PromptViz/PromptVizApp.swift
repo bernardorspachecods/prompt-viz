@@ -1,11 +1,60 @@
 import ApplicationServices
 import AppKit
 import CoreGraphics
+import OSLog
+import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 import PromptVizCore
 
 enum PromptVizBuild {
     static let label = "MVP build 16"
+}
+
+enum PromptVizLog {
+    private static let logger = Logger(subsystem: "local.prompt-viz.app", category: "runtime")
+    private static let lock = NSLock()
+
+    static let fileURL = FileManager.default
+        .urls(for: .libraryDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Logs", isDirectory: true)
+        .appendingPathComponent("PromptViz.log")
+
+    static func info(_ message: String) {
+        logger.info("\(message, privacy: .public)")
+        append(level: "INFO", message: message)
+    }
+
+    static func error(_ error: Error, context: String) {
+        let message = "\(context): \(error.localizedDescription)"
+        logger.error("\(message, privacy: .public)")
+        append(level: "ERROR", message: message)
+    }
+
+    private static func append(level: String, message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(timestamp) [\(level)] \(message)\n"
+
+        lock.lock()
+        defer { lock.unlock() }
+
+        do {
+            let directory = fileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            if !FileManager.default.fileExists(atPath: fileURL.path) {
+                FileManager.default.createFile(atPath: fileURL.path, contents: nil)
+            }
+            let handle = try FileHandle(forWritingTo: fileURL)
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line.utf8))
+            try handle.close()
+        } catch {
+            logger.error("Could not write log file: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 }
 
 struct TextInsertionRequest: Equatable, Identifiable {
@@ -22,6 +71,61 @@ enum SkillKeyboardAction {
     case moveUp
     case moveDown
     case choose
+}
+
+struct GlobalShortcut: Codable, Equatable {
+    static let defaultShortcut = GlobalShortcut(keyCode: 14, modifierFlags: NSEvent.ModifierFlags.command.rawValue)
+    private static let relevantModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+
+    let keyCode: UInt16
+    let modifierFlags: UInt
+
+    var displayName: String {
+        let modifiers = NSEvent.ModifierFlags(rawValue: modifierFlags)
+        var name = ""
+        if modifiers.contains(.control) { name += "⌃" }
+        if modifiers.contains(.option) { name += "⌥" }
+        if modifiers.contains(.shift) { name += "⇧" }
+        if modifiers.contains(.command) { name += "⌘" }
+        return name + Self.keyName(for: keyCode)
+    }
+
+    func matches(_ event: NSEvent) -> Bool {
+        let eventModifiers = event.modifierFlags.intersection(Self.relevantModifiers)
+        return event.keyCode == keyCode && eventModifiers.rawValue == modifierFlags
+    }
+
+    private static func keyName(for keyCode: UInt16) -> String {
+        let names: [UInt16: String] = [
+            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X",
+            8: "C", 9: "V", 11: "B", 12: "Q", 13: "W", 14: "E", 15: "R",
+            16: "Y", 17: "T", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
+            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
+            30: "]", 31: "O", 32: "U", 33: "[", 34: "I", 35: "P", 37: "L",
+            38: "J", 39: "'", 40: "K", 41: ";", 42: "\\", 43: ",", 44: "/",
+            45: "N", 46: "M", 47: ".", 50: "`", 36: "↩", 48: "⇥", 49: "Space",
+            51: "⌫", 53: "Esc", 123: "←", 124: "→", 125: "↓", 126: "↑"
+        ]
+        return names[keyCode] ?? "Key \(keyCode)"
+    }
+}
+
+enum GlobalShortcutPersistence {
+    private static let key = "prompt-viz.open-composer-shortcut"
+
+    static func load(defaults: UserDefaults = .standard) -> GlobalShortcut {
+        guard
+            let data = defaults.data(forKey: key),
+            let shortcut = try? JSONDecoder().decode(GlobalShortcut.self, from: data)
+        else { return .defaultShortcut }
+
+        return shortcut
+    }
+
+    static func save(_ shortcut: GlobalShortcut, defaults: UserDefaults = .standard) {
+        guard let data = try? JSONEncoder().encode(shortcut) else { return }
+        defaults.set(data, forKey: key)
+    }
 }
 
 struct TerminalSession: Equatable, Identifiable {
@@ -54,27 +158,49 @@ enum TerminalAutomationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessibilityNotTrusted:
-            return "O macOS ainda não permitiu ao Prompt Viz enviar teclas para outra app. Ativa o Prompt Viz em Acessibilidade e tenta novamente."
+            return "macOS has not yet allowed Prompt Viz to send keystrokes to another app. Enable Prompt Viz in Accessibility and try again."
         case .automationNotTrusted:
-            return "O macOS bloqueou o Prompt Viz de ler o tab ativo do Terminal.app. Autoriza o Prompt Viz a controlar o Terminal.app nas definições de Automação."
+            return "macOS blocked Prompt Viz from reading the active Terminal.app tab. Allow Prompt Viz to control Terminal.app in Automation settings."
         case .terminalNotActive:
-            return "Ativa o tab correto do Terminal.app antes de enviar."
+            return "Activate the correct Terminal.app tab before sending."
         case .terminalWindowUnavailable:
-            return "O Terminal.app está ativo, mas não consegui identificar o tab atual. Fecha e reabre o Prompt Viz com esse tab selecionado."
+            return "Terminal.app is active, but I couldn't identify the current tab. Close and reopen Prompt Viz with that tab selected."
         case .sessionChanged:
-            return "O tab do Terminal mudou. Volta a selecioná-lo e tenta novamente."
+            return "The Terminal tab changed. Select it again and try again."
         case .sendFailed:
-            return "Não foi possível enviar a prompt para o Terminal.app."
+            return "Could not send the prompt to Terminal.app."
         case .codexInputUnavailable:
-            return "Não consegui localizar o campo de prompt do Codex nesta tab. Mantive o texto na app e não enviei nada."
+            return "I couldn't locate the Codex prompt field in this tab. The text was kept in the app and nothing was sent."
         case .automationFailed(let details):
-            return "O macOS não conseguiu enviar a prompt através do Terminal.app.\n\n\(details)"
+            return "macOS couldn't send the prompt through Terminal.app.\n\n\(details)"
+        }
+    }
+}
+
+enum LaunchAtLogin {
+    static var isEnabled: Bool {
+        switch SMAppService.mainApp.status {
+        case .enabled, .requiresApproval:
+            return true
+        case .notRegistered, .notFound:
+            return false
+        @unknown default:
+            return false
+        }
+    }
+
+    static func setEnabled(_ enabled: Bool) throws {
+        if enabled {
+            try SMAppService.mainApp.register()
+        } else {
+            try SMAppService.mainApp.unregister()
         }
     }
 }
 
 extension Notification.Name {
     static let promptVizOpenAccessibilitySettings = Notification.Name("promptVizOpenAccessibilitySettings")
+    static let promptVizOpenSettings = Notification.Name("promptVizOpenSettings")
 }
 
 final class TerminalAutomation: @unchecked Sendable {
@@ -439,7 +565,32 @@ final class LocalSnippetPersistence {
 
     func load() -> [Snippet]? {
         guard let data = defaults.data(forKey: key) else { return nil }
-        return try? JSONDecoder().decode([Snippet].self, from: data)
+        guard let snippets = try? JSONDecoder().decode([Snippet].self, from: data) else { return nil }
+        return snippets.compactMap { snippet in
+            guard snippet.title != "Analisa código" else { return nil }
+
+            var snippet = snippet
+            switch (snippet.title, snippet.body) {
+            case ("Sê honesto", "Sê honesto sobre o que sabes e o que não sabes."):
+                snippet.title = "Be honest"
+                snippet.body = "Be honest about what you know and what you don't know."
+            case ("Sem bias", "Analisa o problema sem bias e explicita os trade-offs."):
+                snippet.title = "No bias"
+                snippet.body = "Analyze the problem without bias and make the trade-offs explicit."
+            case ("Não assumas", "Não assumas informação que não foi fornecida; indica as incertezas."):
+                snippet.title = "Don't assume"
+                snippet.body = "Don't assume information that wasn't provided; call out uncertainties."
+            case ("Explica passo a passo", "Explica o raciocínio passo a passo, de forma clara e concisa."):
+                snippet.title = "Explain step by step"
+                snippet.body = "Explain the reasoning step by step, clearly and concisely."
+            case ("Revisa o resultado", "No final, revê o resultado e aponta possíveis falhas ou casos limite."):
+                snippet.title = "Review the result"
+                snippet.body = "At the end, review the result and point out possible failures or edge cases."
+            default:
+                break
+            }
+            return snippet
+        }
     }
 
     func save(_ snippets: [Snippet]) {
@@ -461,7 +612,8 @@ final class PromptVizModel: ObservableObject {
     @Published var editorCursorLocationRequest: Int?
     @Published var editorFocusRequest: UUID?
     @Published var skillHighlightRequest: SkillHighlightRequest?
-    @Published var templateToFill: Snippet?
+    @Published private(set) var launchesAtLogin = LaunchAtLogin.isEnabled
+    @Published private(set) var openComposerShortcut = GlobalShortcutPersistence.load()
     @Published var errorMessage: String?
     @Published var shouldOfferAccessibilitySettings = false
     @Published var shouldOfferAutomationSettings = false
@@ -487,6 +639,7 @@ final class PromptVizModel: ObservableObject {
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
         skills = []
         sync()
+        PromptVizLog.info("Application model initialized")
         workspaceMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.pruneClosedWorkspaces()
@@ -505,6 +658,7 @@ final class PromptVizModel: ObservableObject {
     }
 
     func captureActiveTerminalSession() {
+        PromptVizLog.info("Capturing active Terminal session")
         // Capture can switch to a new workspace, so persist the current editor
         // before changing selectedWorkspaceID or letting the new tab activate.
         saveCurrentDraft()
@@ -514,7 +668,9 @@ final class PromptVizModel: ObservableObject {
 
         guard terminalAutomation.isTerminalFrontmost else {
             isCapturingTerminalSession = false
-            errorMessage = TerminalAutomationError.terminalNotActive.localizedDescription
+            let error = TerminalAutomationError.terminalNotActive
+            PromptVizLog.error(error, context: "Capture failed")
+            errorMessage = error.localizedDescription
             openMainWindow()
             return
         }
@@ -537,7 +693,9 @@ final class PromptVizModel: ObservableObject {
             workspaceStore.updateDraft(editorDraft, for: workspace.id)
             sync()
             openMainWindow()
+            PromptVizLog.info("Terminal session captured successfully")
         } catch {
+            PromptVizLog.error(error, context: "Capture failed")
             isCapturingTerminalSession = false
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
@@ -610,12 +768,27 @@ final class PromptVizModel: ObservableObject {
         scheduleEditorTextPublication()
     }
 
-    func insert(_ snippet: Snippet) {
-        if TemplateEngine.fieldNames(in: snippet.body).isEmpty {
-            insertionRequest = TextInsertionRequest(text: snippet.body)
-        } else {
-            templateToFill = snippet
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            try LaunchAtLogin.setEnabled(enabled)
+            launchesAtLogin = LaunchAtLogin.isEnabled
+            PromptVizLog.info("Launch at login changed to \(launchesAtLogin)")
+        } catch {
+            PromptVizLog.error(error, context: "Could not update launch at login")
+            launchesAtLogin = LaunchAtLogin.isEnabled
+            errorMessage = "Could not update the launch-at-login setting.\n\n\(error.localizedDescription)"
         }
+    }
+
+    func setOpenComposerShortcut(_ shortcut: GlobalShortcut) {
+        openComposerShortcut = shortcut
+        GlobalShortcutPersistence.save(shortcut)
+        PromptVizLog.info("Open Composer shortcut changed to \(shortcut.displayName)")
+    }
+
+    func insert(_ snippet: Snippet) {
+        insertionRequest = TextInsertionRequest(text: snippet.body)
+        PromptVizLog.info("Template inserted")
     }
 
     func selectSkill(_ skill: SkillDescriptor) {
@@ -641,11 +814,6 @@ final class PromptVizModel: ObservableObject {
         }
     }
 
-    func applyTemplate(_ snippet: Snippet, values: [String: String]) {
-        insertionRequest = TextInsertionRequest(text: TemplateEngine.render(snippet.body, values: values))
-        templateToFill = nil
-    }
-
     func send() {
         shouldOfferAccessibilitySettings = false
         shouldOfferAutomationSettings = false
@@ -663,7 +831,9 @@ final class PromptVizModel: ObservableObject {
             saveCurrentDraft()
             sync(reconcileWindows: false)
             openMainWindow()
+            PromptVizLog.info("Prompt sent successfully")
         } catch {
+            PromptVizLog.error(error, context: "Could not send prompt")
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
             shouldOfferAutomationSettings = (error as? TerminalAutomationError)?.isAutomationNotTrusted == true
@@ -671,21 +841,35 @@ final class PromptVizModel: ObservableObject {
     }
 
     func addSnippet(title: String, body: String, favorite: Bool) {
-        snippetLibrary.add(Snippet(title: title, body: body, isFavorite: favorite))
+        guard snippetLibrary.add(Snippet(title: title, body: body, isFavorite: favorite)) else {
+            PromptVizLog.info("Template creation rejected because the 9-template limit was reached")
+            errorMessage = "Prompt Viz supports up to 9 templates because there are only 9 shortcut slots."
+            return
+        }
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
+        PromptVizLog.info("Template created")
     }
 
     func updateSnippet(_ snippet: Snippet) {
         snippetLibrary.update(snippet)
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
+        PromptVizLog.info("Template updated")
     }
 
     func removeSnippet(_ snippet: Snippet) {
         snippetLibrary.remove(id: snippet.id)
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
+        PromptVizLog.info("Template deleted")
+    }
+
+    func moveSnippet(_ snippet: Snippet, toShortcutNumber shortcutNumber: Int) {
+        snippetLibrary.moveSnippet(snippet.id, toShortcutNumber: shortcutNumber)
+        snippetPersistence.save(snippetLibrary.snippets)
+        sync()
+        PromptVizLog.info("Template moved to shortcut slot \(shortcutNumber)")
     }
 
     func openMainWindow() {
@@ -783,44 +967,16 @@ struct PromptVizApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = PromptVizModel.shared
 
-    private var menuBarLogo: Image {
-        guard
-            let url = Bundle.main.url(forResource: "PromptVizLogo", withExtension: "svg"),
-            let image = NSImage(contentsOf: url)
-        else {
-            return Image(systemName: "text.bubble")
-        }
-
-        image.isTemplate = true
-        image.size = NSSize(width: 18, height: 18)
-        return Image(nsImage: image)
-    }
-
     var body: some Scene {
-        MenuBarExtra {
-            Button("Abrir compositor") {
-                model.captureActiveTerminalSession()
-            }
-            .keyboardShortcut("e", modifiers: [.command])
-
-            Divider()
-
-            Button("Sair") {
-                NSApplication.shared.terminate(nil)
-            }
-        } label: {
-            Label {
-                Text("Prompt Viz · \(PromptVizBuild.label)")
-            } icon: {
-                menuBarLogo
-            }
+        Settings {
+            EmptyView()
         }
         .commands {
-            CommandGroup(after: .appInfo) {
-                Button("Abrir compositor") {
-                    model.captureActiveTerminalSession()
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    NotificationCenter.default.post(name: .promptVizOpenSettings, object: nil)
                 }
-                .keyboardShortcut("e", modifiers: [.command])
+                .keyboardShortcut(",", modifiers: [.command])
             }
         }
     }
@@ -833,6 +989,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var workspaceSwitchMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PromptVizLog.info("Application did finish launching")
         let model = PromptVizModel.shared
         mainWindowController = MainWindowController(model: model)
         model.openMainWindowHandler = { [weak self] in
@@ -843,18 +1000,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         keyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            guard
-                event.keyCode == 14,
-                event.modifierFlags.contains(.command),
-                !event.modifierFlags.contains(.option),
-                !event.modifierFlags.contains(.control),
-                !event.modifierFlags.contains(.shift)
-            else { return }
+            guard model.openComposerShortcut.matches(event) else { return }
+            PromptVizLog.info("Open Composer shortcut pressed")
             model.captureActiveTerminalSession()
         }
 
         workspaceSwitchMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             let modifiers = event.modifierFlags
+
+            if event.keyCode == 43,
+               modifiers.contains(.command),
+               !modifiers.contains(.option),
+               !modifiers.contains(.control),
+               !modifiers.contains(.shift) {
+                NotificationCenter.default.post(name: .promptVizOpenSettings, object: nil)
+                return nil
+            }
+
             guard
                 event.keyCode == 48,
                 modifiers.contains(.control),
@@ -1006,12 +1168,25 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 }
 
+enum SnippetEditorPresentation: Identifiable {
+    case new
+    case edit(Snippet)
+
+    var id: String {
+        switch self {
+        case .new:
+            return "new"
+        case .edit(let snippet):
+            return snippet.id.uuidString
+        }
+    }
+}
+
 @MainActor
 struct ContentView: View {
     @ObservedObject var model: PromptVizModel
-    @State private var snippetSearch = ""
-    @State private var showingSnippetEditor = false
-    @State private var editingSnippet: Snippet?
+    @State private var snippetEditorPresentation: SnippetEditorPresentation?
+    @State private var showingSettings = false
 
     private var composerTitle: String {
         let title = model.selectedWorkspace?.title ?? "Prompt Viz"
@@ -1039,40 +1214,30 @@ struct ContentView: View {
         )
     }
 
-    private var visibleSnippets: [Snippet] {
-        model.snippetLibrary.search(snippetSearch)
-    }
-
     var body: some View {
         composer
-        .sheet(item: $model.templateToFill) { snippet in
-            TemplateFillSheet(snippet: snippet) { values in
-                model.applyTemplate(snippet, values: values)
+        .sheet(item: $snippetEditorPresentation) { presentation in
+            switch presentation {
+            case .new:
+                snippetEditorSheet(for: nil)
+            case .edit(let snippet):
+                snippetEditorSheet(for: snippet)
             }
         }
-        .sheet(isPresented: $showingSnippetEditor) {
-            SnippetEditorSheet(snippet: editingSnippet) { title, body, favorite in
-                if var editingSnippet {
-                    editingSnippet.title = title
-                    editingSnippet.body = body
-                    editingSnippet.isFavorite = favorite
-                    model.updateSnippet(editingSnippet)
-                } else {
-                    model.addSnippet(title: title, body: body, favorite: favorite)
-                }
-            }
+        .sheet(isPresented: $showingSettings) {
+            AppSettingsView(model: model)
         }
         .alert("Prompt Viz", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )) {
             if model.shouldOfferAutomationSettings {
-                Button("Abrir Automação") {
+                    Button("Open Automation") {
                     model.terminalAutomation.openAutomationSettings()
                     model.errorMessage = nil
                 }
             } else if model.shouldOfferAccessibilitySettings {
-                Button("Abrir Acessibilidade") {
+                    Button("Open Accessibility") {
                     model.terminalAutomation.openAccessibilitySettings()
                     model.errorMessage = nil
                 }
@@ -1080,6 +1245,32 @@ struct ContentView: View {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .promptVizOpenSettings)) { _ in
+            showingSettings = true
+        }
+    }
+
+    @ViewBuilder
+    private func snippetEditorSheet(for snippet: Snippet?) -> some View {
+        SnippetEditorSheet(
+            snippet: snippet,
+            onDelete: snippet.map { snippet in
+                { model.removeSnippet(snippet) }
+            }
+        ) { title, body, favorite in
+            if var snippet {
+                snippet.title = title
+                snippet.body = body
+                snippet.isFavorite = favorite
+                model.updateSnippet(snippet)
+            } else {
+                model.addSnippet(
+                    title: title,
+                    body: body,
+                    favorite: favorite
+                )
+            }
         }
     }
 
@@ -1096,7 +1287,7 @@ struct ContentView: View {
 
                     Spacer()
 
-                    Button("Enviar") {
+                    Button("Send") {
                         model.send()
                     }
                     .keyboardShortcut(.return, modifiers: [.command])
@@ -1116,33 +1307,36 @@ struct ContentView: View {
 
     private var snippetSidebar: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Label("Snippets", systemImage: "text.quote")
-                    .font(.headline)
-
-                Spacer()
-
-                Button {
-                    editingSnippet = nil
-                    showingSnippetEditor = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help("Novo snippet")
-            }
-
-            TextField("Pesquisar", text: $snippetSearch)
-                .textFieldStyle(.roundedBorder)
-
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 10) {
-                    if !model.snippetLibrary.favorites.isEmpty {
-                        Text("Favoritos")
+                    HStack {
+                        Text("Templates")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
 
-                        ForEach(Array(model.snippetLibrary.favorites.prefix(9).enumerated()), id: \.element.id) { index, snippet in
+                        Spacer()
+
+                        Button {
+                            snippetEditorPresentation = .new
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("New snippet")
+                    }
+
+                    ForEach(Array(model.snippetLibrary.snippets.prefix(9).enumerated()), id: \.element.id) { index, snippet in
+                        shortcutSlot(snippet, shortcutNumber: index + 1)
+                    }
+
+                    if !model.snippetLibrary.favorites.isEmpty {
+                        Divider()
+
+                        Text("Favorites")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        ForEach(model.snippetLibrary.favorites.prefix(9)) { snippet in
                             Button {
                                 model.insert(snippet)
                             } label: {
@@ -1151,25 +1345,22 @@ struct ContentView: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .buttonStyle(.bordered)
-                            .keyboardShortcut(
-                                KeyEquivalent(Character(String(index + 1))),
-                                modifiers: [.command, .option]
-                            )
-                        }
-                    }
-
-                    if !visibleSnippets.isEmpty {
-                        Divider()
-
-                        Text("Todos")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        ForEach(visibleSnippets) { snippet in
-                            snippetRow(snippet)
                         }
                     }
                 }
+            }
+            .frame(maxHeight: .infinity)
+
+            HStack {
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .help("Settings")
+
+                Spacer()
             }
         }
         .padding(14)
@@ -1183,39 +1374,220 @@ struct ContentView: View {
         .background(.quaternary.opacity(0.18))
     }
 
-    private func snippetRow(_ snippet: Snippet) -> some View {
+    private func shortcutSlot(_ snippet: Snippet, shortcutNumber: Int) -> some View {
+        templateSlot(snippet, shortcutNumber: shortcutNumber)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 6))
+        .contentShape(Rectangle())
+        .onDrop(of: [UTType.text], isTargeted: nil) { providers in
+            guard let provider = providers.first else { return false }
+
+            provider.loadDataRepresentation(forTypeIdentifier: UTType.text.identifier) { data, _ in
+                guard
+                    let data,
+                    let string = String(data: data, encoding: .utf8),
+                    let snippetID = UUID(uuidString: string)
+                else { return }
+
+                Task { @MainActor in
+                    guard let snippet = model.snippetLibrary.snippets.first(where: { $0.id == snippetID }) else {
+                        return
+                    }
+                    model.moveSnippet(snippet, toShortcutNumber: shortcutNumber)
+                }
+            }
+            return true
+        }
+    }
+
+    private func templateSlot(_ snippet: Snippet, shortcutNumber: Int) -> some View {
         HStack(spacing: 4) {
             Button {
                 model.insert(snippet)
             } label: {
-                Text(snippet.title)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 0) {
+                    Text("⌘\(shortcutNumber)")
+                        .font(.caption.monospaced().weight(.semibold))
+                        .frame(width: 34, alignment: .leading)
+
+                    Text(snippet.title)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .keyboardShortcut(
+                KeyEquivalent(Character(String(shortcutNumber))),
+                modifiers: [.command]
+            )
 
             Button {
-                editingSnippet = snippet
-                showingSnippetEditor = true
+                snippetEditorPresentation = .edit(snippet)
             } label: {
                 Image(systemName: "pencil")
             }
             .buttonStyle(.borderless)
-            .help("Editar snippet")
+            .padding(.vertical, 6)
+            .help("Edit snippet")
 
-            Button {
-                model.removeSnippet(snippet)
-            } label: {
-                Image(systemName: "trash")
-            }
-            .buttonStyle(.borderless)
-            .help("Apagar snippet")
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7))
+        .draggable(snippet.id.uuidString)
     }
 
+}
+
+struct AppSettingsView: View {
+    @ObservedObject var model: PromptVizModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Settings")
+                .font(.title2.weight(.semibold))
+
+            Toggle("Launch Prompt Viz at login", isOn: Binding(
+                get: { model.launchesAtLogin },
+                set: { model.setLaunchAtLogin($0) }
+            ))
+
+            HStack {
+                Text("Open Composer shortcut")
+
+                Spacer()
+
+                ShortcutRecorderView(shortcut: Binding(
+                    get: { model.openComposerShortcut },
+                    set: { model.setOpenComposerShortcut($0) }
+                ))
+
+                Button {
+                    model.setOpenComposerShortcut(.defaultShortcut)
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                }
+                .buttonStyle(.borderless)
+                .help("Reset shortcut")
+            }
+
+            Text("Prompt Viz will run in the background and remain available through the \(model.openComposerShortcut.displayName) shortcut.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 430)
+    }
+}
+
+struct ShortcutRecorderView: NSViewRepresentable {
+    @Binding var shortcut: GlobalShortcut
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> ShortcutRecorderNSView {
+        let view = ShortcutRecorderNSView(shortcut: shortcut)
+        view.onShortcutChanged = { newShortcut in
+            context.coordinator.parent.shortcut = newShortcut
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: ShortcutRecorderNSView, context: Context) {
+        nsView.shortcut = shortcut
+        nsView.needsDisplay = true
+    }
+
+    final class Coordinator {
+        var parent: ShortcutRecorderView
+
+        init(_ parent: ShortcutRecorderView) {
+            self.parent = parent
+        }
+    }
+}
+
+final class ShortcutRecorderNSView: NSView {
+    var shortcut: GlobalShortcut
+    var onShortcutChanged: ((GlobalShortcut) -> Void)?
+    private var isRecording = false
+
+    init(shortcut: GlobalShortcut) {
+        self.shortcut = shortcut
+        super.init(frame: .zero)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        isRecording = true
+        window?.makeFirstResponder(self)
+        needsDisplay = true
+    }
+
+    override func resignFirstResponder() -> Bool {
+        isRecording = false
+        needsDisplay = true
+        return super.resignFirstResponder()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 {
+            isRecording = false
+            needsDisplay = true
+            return
+        }
+
+        let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        guard !modifiers.isEmpty else {
+            NSSound.beep()
+            return
+        }
+
+        shortcut = GlobalShortcut(keyCode: event.keyCode, modifierFlags: modifiers.rawValue)
+        onShortcutChanged?(shortcut)
+        isRecording = false
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let bounds = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6)
+        (isRecording ? NSColor.controlAccentColor : NSColor.controlBackgroundColor).setFill()
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.stroke()
+
+        let title = isRecording ? "Press shortcut…" : shortcut.displayName
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12),
+            .foregroundColor: isRecording ? NSColor.white : NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+        (title as NSString).draw(
+            in: bounds.insetBy(dx: 6, dy: 5),
+            withAttributes: attributes
+        )
+    }
 }
 
 @MainActor
@@ -1518,67 +1890,22 @@ struct PromptTextEditor: NSViewRepresentable {
     }
 }
 
-struct TemplateFillSheet: View {
-    let snippet: Snippet
-    let onInsert: ([String: String]) -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var values: [String: String]
-    @FocusState private var focusedField: String?
-
-    init(snippet: Snippet, onInsert: @escaping ([String: String]) -> Void) {
-        self.snippet = snippet
-        self.onInsert = onInsert
-        _values = State(initialValue: Dictionary(
-            uniqueKeysWithValues: TemplateEngine.fieldNames(in: snippet.body).map { ($0, "") }
-        ))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(snippet.title)
-                .font(.title2.weight(.semibold))
-            Text(snippet.body)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            ForEach(TemplateEngine.fieldNames(in: snippet.body), id: \.self) { field in
-                TextField(field, text: Binding(
-                    get: { values[field, default: ""] },
-                    set: { values[field] = $0 }
-                ))
-                .textFieldStyle(.roundedBorder)
-                .focused($focusedField, equals: field)
-            }
-
-            HStack {
-                Spacer()
-                Button("Cancelar") { dismiss() }
-                Button("Inserir") {
-                    onInsert(values)
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.return)
-            }
-        }
-        .padding(24)
-        .frame(width: 430)
-        .onAppear {
-            focusedField = TemplateEngine.fieldNames(in: snippet.body).first
-        }
-    }
-}
-
 struct SnippetEditorSheet: View {
     let snippet: Snippet?
+    let onDelete: (() -> Void)?
     let onSave: (String, String, Bool) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
     @State private var snippetBody: String
     @State private var favorite: Bool
 
-    init(snippet: Snippet?, onSave: @escaping (String, String, Bool) -> Void) {
+    init(
+        snippet: Snippet?,
+        onDelete: (() -> Void)? = nil,
+        onSave: @escaping (String, String, Bool) -> Void
+    ) {
         self.snippet = snippet
+        self.onDelete = onDelete
         self.onSave = onSave
         _title = State(initialValue: snippet?.title ?? "")
         _snippetBody = State(initialValue: snippet?.body ?? "")
@@ -1587,19 +1914,28 @@ struct SnippetEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(snippet == nil ? "Novo snippet" : "Editar snippet")
+            Text(snippet == nil ? "New snippet" : "Edit snippet")
                 .font(.title2.weight(.semibold))
-            TextField("Nome", text: $title)
+            TextField("Name", text: $title)
                 .textFieldStyle(.roundedBorder)
             TextEditor(text: $snippetBody)
                 .font(.body.monospaced())
                 .frame(height: 130)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(.quaternary))
-            Toggle("Mostrar nos favoritos", isOn: $favorite)
+            Toggle("Show in favorites", isOn: $favorite)
             HStack {
+                if let onDelete {
+                    Button("Delete", role: .destructive) {
+                        onDelete()
+                        dismiss()
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+
                 Spacer()
-                Button("Cancelar") { dismiss() }
-                Button("Guardar") {
+                Button("Cancel") { dismiss() }
+                Button("Save") {
                     onSave(title, snippetBody, favorite)
                     dismiss()
                 }
