@@ -1,9 +1,9 @@
 # Contexto da documentação
 
-Esta pasta contém a documentação durável do produto. A entrada pública da repo é [`../README.md`](../README.md).
+Esta pasta contém a documentação durável do produto.
 
 - [`vision.md`](vision.md): intenção, experiência, escopo e limites do produto.
 - [`architecture.md`](architecture.md): módulos, fronteiras, contratos técnicos e riscos.
 - [`current-state.md`](current-state.md): comportamento verificado, limitações e evidência.
 
-Não duplicar o estado atual na visão ou na arquitetura. Quando uma decisão futura for confirmada, registá-la em [`../PLAN.md`](../PLAN.md) e atualizar apenas o documento cuja responsabilidade mudou.
+As decisões de trabalho futuro ficam em [`../PLAN.md`](../PLAN.md); os documentos desta pasta descrevem apenas a responsabilidade indicada no mapa acima.
