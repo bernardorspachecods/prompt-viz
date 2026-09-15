@@ -8,7 +8,7 @@ import UniformTypeIdentifiers
 import PromptVizCore
 
 enum PromptVizBuild {
-    static let label = "MVP build 20"
+    static let label = "MVP build 22"
 }
 
 enum PromptVizLog {
@@ -62,9 +62,23 @@ struct TextInsertionRequest: Equatable, Identifiable {
     let text: String
 }
 
+struct ImagePastePreview: Identifiable {
+    let id = UUID()
+    let data: Data
+}
+
+struct ImagePasteRequest: Equatable, Identifiable {
+    let id = UUID()
+    let data: Data
+}
+
 struct SkillHighlightRequest: Equatable, Identifiable {
     let id = UUID()
     let range: NSRange
+}
+
+private enum PromptEditorAttribute {
+    static let selectedSkill = NSAttributedString.Key("PromptViz.selectedSkill")
 }
 
 enum SkillKeyboardAction {
@@ -83,6 +97,32 @@ private func isImagePasteShortcut(_ event: NSEvent) -> Bool {
     return event.keyCode == 9 ||
         event.charactersIgnoringModifiers?.lowercased() == "v" ||
         event.characters?.lowercased() == "√"
+}
+
+private enum ClipboardImageReader {
+    static func pngData(from pasteboard: NSPasteboard) -> Data? {
+        if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+            return pngData
+        }
+
+        if let tiffData = pasteboard.data(forType: .tiff),
+           let image = NSImage(data: tiffData),
+           let pngData = pngData(from: image) {
+            return pngData
+        }
+
+        guard let image = NSImage(pasteboard: pasteboard) else { return nil }
+        return pngData(from: image)
+    }
+
+    private static func pngData(from image: NSImage) -> Data? {
+        guard
+            let tiffData = image.tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiffData)
+        else { return nil }
+
+        return bitmap.representation(using: .png, properties: [:])
+    }
 }
 
 struct GlobalShortcut: Codable, Equatable {
@@ -719,7 +759,8 @@ final class PromptVizModel: ObservableObject {
     @Published var selectedWorkspaceID: UUID?
     @Published var editorText = ""
     @Published private(set) var editorImageAttachments: [PromptImageAttachment] = []
-    @Published var imagePasteRequest: UUID?
+    @Published var imagePastePreview: ImagePastePreview?
+    @Published var imagePasteRequest: ImagePasteRequest?
     @Published var insertionRequest: TextInsertionRequest?
     @Published var editorCursorLocationRequest: Int?
     @Published var editorFocusRequest: UUID?
@@ -919,9 +960,29 @@ final class PromptVizModel: ObservableObject {
     }
 
     func requestImagePaste() {
-        imagePasteRequest = UUID()
+        let pasteboard = NSPasteboard.general
+        guard let data = ClipboardImageReader.pngData(from: pasteboard) else {
+            PromptVizLog.info("Image preview requested but clipboard has no supported image")
+            errorMessage = "No supported image was found in the clipboard."
+            return
+        }
+
+        imagePastePreview = ImagePastePreview(data: data)
+        PromptVizLog.info("Image preview opened from app command")
+    }
+
+    func confirmImagePaste(_ preview: ImagePastePreview) {
+        guard imagePastePreview?.id == preview.id else { return }
+        imagePasteRequest = ImagePasteRequest(data: preview.data)
+        imagePastePreview = nil
         editorFocusRequest = UUID()
-        PromptVizLog.info("Image paste requested from app command")
+        PromptVizLog.info("Image paste confirmed from preview")
+    }
+
+    func cancelImagePaste(_ preview: ImagePastePreview) {
+        guard imagePastePreview?.id == preview.id else { return }
+        imagePastePreview = nil
+        PromptVizLog.info("Image paste cancelled from preview")
     }
 
     func loadHistoryEntry(_ entry: PromptHistoryEntry) {
@@ -1428,6 +1489,13 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingSettings) {
             AppSettingsView(model: model)
+        }
+        .sheet(item: $model.imagePastePreview) { preview in
+            ImagePasteConfirmationView(
+                data: preview.data,
+                onCancel: { model.cancelImagePaste(preview) },
+                onConfirm: { model.confirmImagePaste(preview) }
+            )
         }
         .alert("Prompt Viz", isPresented: Binding(
             get: { model.errorMessage != nil },
@@ -1970,58 +2038,57 @@ struct PromptEditorArea: View {
 
     private var skillSuggestions: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Label("Skills", systemImage: "sparkles")
+            Text("Skills")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 5)
 
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(visibleSkills.enumerated()), id: \.element.id) { index, skill in
-                        Button {
-                            hoveredSkillID = nil
-                            selectedSkillIndex = index
-                            model.selectSkill(skill)
-                        } label: {
-                            HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "sparkles")
-                                    .font(.callout.weight(.semibold))
-                                    .foregroundStyle(Color.accentColor)
-                                    .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(Array(visibleSkills.enumerated()), id: \.element.id) { index, skill in
+                    Button {
+                        hoveredSkillID = nil
+                        selectedSkillIndex = index
+                        model.selectSkill(skill)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "sparkles")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 16)
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("$" + skill.name)
-                                        .font(.callout.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    if !skill.description.isEmpty {
-                                        Text(skill.description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                    }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("$" + skill.name)
+                                    .font(.callout.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                if !skill.description.isEmpty {
+                                    Text(skill.description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 6)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        .background(
-                            hoveredSkillID == skill.id || selectedSkillIndex == index
-                                ? Color.accentColor.opacity(0.18)
-                                : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 6)
-                        )
-                        .onHover { isHovered in
-                            hoveredSkillID = isHovered ? skill.id : nil
-                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 6)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .background(
+                        hoveredSkillID == skill.id || selectedSkillIndex == index
+                            ? Color.accentColor.opacity(0.18)
+                            : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 6)
+                    )
+                    .onHover { isHovered in
+                        hoveredSkillID = isHovered ? skill.id : nil
                     }
                 }
             }
-            .frame(maxHeight: 220)
+            .fixedSize(horizontal: false, vertical: true)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: 500, alignment: .leading)
         .padding(6)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
@@ -2084,12 +2151,50 @@ final class PromptTextView: NSTextView {
     }
 }
 
+struct ImagePasteConfirmationView: View {
+    let data: Data
+    let onCancel: () -> Void
+    let onConfirm: () -> Void
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Preview image")
+                .font(.headline)
+
+            Group {
+                if let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    Text("The image could not be previewed.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: 560, maxHeight: 420)
+
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("Paste image", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(minWidth: 520, minHeight: 380)
+    }
+}
+
 struct PromptTextEditor: NSViewRepresentable {
     @Binding var text: String
     @Binding var insertionRequest: TextInsertionRequest?
     @Binding var cursorLocationRequest: Int?
     @Binding var focusRequest: UUID?
-    @Binding var imagePasteRequest: UUID?
+    @Binding var imagePasteRequest: ImagePasteRequest?
     @Binding var skillHighlightRequest: SkillHighlightRequest?
     let onSkillKeyboardAction: (SkillKeyboardAction) -> Bool
     let onImagePaste: (Data, Int) -> Void
@@ -2162,12 +2267,12 @@ struct PromptTextEditor: NSViewRepresentable {
         }
 
         if let imagePasteRequest,
-           context.coordinator.lastImagePasteRequest != imagePasteRequest {
-            context.coordinator.lastImagePasteRequest = imagePasteRequest
-            _ = context.coordinator.handleImagePaste(in: textView)
-            let requestID = imagePasteRequest
+           context.coordinator.lastImagePasteRequest != imagePasteRequest.id {
+            context.coordinator.lastImagePasteRequest = imagePasteRequest.id
+            _ = context.coordinator.handleImagePaste(imagePasteRequest.data, in: textView)
+            let requestID = imagePasteRequest.id
             DispatchQueue.main.async {
-                guard self.imagePasteRequest == requestID else { return }
+                guard self.imagePasteRequest?.id == requestID else { return }
                 self.imagePasteRequest = nil
             }
         }
@@ -2184,7 +2289,8 @@ struct PromptTextEditor: NSViewRepresentable {
             if length > 0 {
                 textView.textStorage?.addAttributes([
                     .font: NSFont.systemFont(ofSize: 15, weight: .semibold),
-                    .foregroundColor: NSColor.controlAccentColor
+                    .foregroundColor: NSColor.controlAccentColor,
+                    PromptEditorAttribute.selectedSkill: true
                 ], range: NSRange(location: location, length: length))
                 textView.typingAttributes = [
                     .font: NSFont.systemFont(ofSize: 15),
@@ -2237,7 +2343,7 @@ struct PromptTextEditor: NSViewRepresentable {
 
         textStorage.beginEditing()
         if fullRange.length > 0 {
-            textStorage.setAttributes(baseAttributes, range: fullRange)
+            textStorage.addAttributes(baseAttributes, range: fullRange)
         }
 
         let tokenAttributes: [NSAttributedString.Key: Any] = [
@@ -2245,10 +2351,36 @@ struct PromptTextEditor: NSViewRepresentable {
             .foregroundColor: NSColor.controlAccentColor
         ]
         for token in PromptEditorTokens.tokens(in: textView.string) {
-            textStorage.addAttributes(tokenAttributes, range: token.range)
+            let isImage = token.kind == .imageReference
+            let isSelectedSkill = token.kind == .skillReference &&
+                textStorage.attribute(
+                    PromptEditorAttribute.selectedSkill,
+                    at: token.range.location,
+                    effectiveRange: nil
+                ) != nil
+
+            if isImage || isSelectedSkill {
+                textStorage.addAttributes(tokenAttributes, range: token.range)
+            }
         }
         textStorage.endEditing()
         textView.typingAttributes = baseAttributes
+    }
+
+    static func semanticTokenRanges(in textView: NSTextView) -> [NSRange] {
+        guard let textStorage = textView.textStorage else { return [] }
+
+        return PromptEditorTokens.tokens(in: textView.string).compactMap { token in
+            if token.kind == .imageReference {
+                return token.range
+            }
+
+            return textStorage.attribute(
+                PromptEditorAttribute.selectedSkill,
+                at: token.range.location,
+                effectiveRange: nil
+            ) == nil ? nil : token.range
+        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -2284,7 +2416,8 @@ struct PromptTextEditor: NSViewRepresentable {
         ) -> Bool {
             if let tokenRange = PromptEditorTokens.editingRange(
                 for: affectedCharRange,
-                in: textView.string
+                in: textView.string,
+                restrictedTo: PromptTextEditor.semanticTokenRanges(in: textView)
             ), tokenRange != affectedCharRange {
                 let replacement = replacementString ?? ""
                 isApplyingModelText = true
@@ -2328,29 +2461,36 @@ struct PromptTextEditor: NSViewRepresentable {
 
         @MainActor
         fileprivate func handleImagePaste(
+            _ confirmedImageData: Data? = nil,
             in textView: NSTextView,
             selectedRange overrideRange: NSRange? = nil
         ) -> Bool {
-            let pasteboard = NSPasteboard.general
-            let types = pasteboard.types?.map(\.rawValue).joined(separator: ", ") ?? "none"
-            PromptVizLog.info("Image pasteboard types: \(types)")
-
             let imageData: Data
-            if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
-                imageData = pngData
-                PromptVizLog.info("Image paste found PNG data")
-            } else if let tiffData = pasteboard.data(forType: .tiff),
-                      let image = NSImage(data: tiffData),
-                      let convertedData = pngData(from: image) {
-                imageData = convertedData
-                PromptVizLog.info("Image paste converted TIFF data to PNG")
-            } else if let image = NSImage(pasteboard: pasteboard),
-                      let convertedData = pngData(from: image) {
-                imageData = convertedData
-                PromptVizLog.info("Image paste converted NSImage data to PNG")
+            if let confirmedImageData {
+                guard !confirmedImageData.isEmpty else { return false }
+                imageData = confirmedImageData
+                PromptVizLog.info("Image paste using confirmed preview data")
             } else {
-                PromptVizLog.info("Image paste found no supported image data")
-                return false
+                let pasteboard = NSPasteboard.general
+                let types = pasteboard.types?.map(\.rawValue).joined(separator: ", ") ?? "none"
+                PromptVizLog.info("Image pasteboard types: \(types)")
+
+                if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
+                    imageData = pngData
+                    PromptVizLog.info("Image paste found PNG data")
+                } else if let tiffData = pasteboard.data(forType: .tiff),
+                          let image = NSImage(data: tiffData),
+                          let convertedData = pngData(from: image) {
+                    imageData = convertedData
+                    PromptVizLog.info("Image paste converted TIFF data to PNG")
+                } else if let image = NSImage(pasteboard: pasteboard),
+                          let convertedData = pngData(from: image) {
+                    imageData = convertedData
+                    PromptVizLog.info("Image paste converted NSImage data to PNG")
+                } else {
+                    PromptVizLog.info("Image paste found no supported image data")
+                    return false
+                }
             }
 
             let number = PromptImageReference.nextNumber(in: textView.string)

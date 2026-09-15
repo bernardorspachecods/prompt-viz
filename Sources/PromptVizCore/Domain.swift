@@ -195,27 +195,45 @@ public enum PromptEditorTokens {
         for affectedRange: NSRange,
         in text: String
     ) -> NSRange? {
+        editingRange(
+            for: affectedRange,
+            tokenRanges: tokens(in: text).map(\.range)
+        )
+    }
+
+    public static func editingRange(
+        for affectedRange: NSRange,
+        in text: String,
+        restrictedTo tokenRanges: [NSRange]
+    ) -> NSRange? {
+        editingRange(for: affectedRange, tokenRanges: tokenRanges)
+    }
+
+    private static func editingRange(
+        for affectedRange: NSRange,
+        tokenRanges: [NSRange]
+    ) -> NSRange? {
         guard affectedRange.location >= 0, affectedRange.length >= 0 else { return nil }
 
         let editStart = affectedRange.location
         let editEnd = affectedRange.location + affectedRange.length
 
         var expandedRange: NSRange?
-        for token in tokens(in: text) {
-            let tokenStart = token.range.location
-            let tokenEnd = token.range.location + token.range.length
+        for tokenRange in tokenRanges {
+            let tokenStart = tokenRange.location
+            let tokenEnd = tokenRange.location + tokenRange.length
 
             if affectedRange.length == 0 {
                 if editStart > tokenStart && editStart < tokenEnd {
-                    return token.range
+                    return tokenRange
                 }
                 continue
             }
 
             guard editStart < tokenEnd && editEnd > tokenStart else { continue }
             expandedRange = expandedRange.map {
-                NSUnionRange($0, token.range)
-            } ?? NSUnionRange(affectedRange, token.range)
+                NSUnionRange($0, tokenRange)
+            } ?? NSUnionRange(affectedRange, tokenRange)
         }
 
         return expandedRange

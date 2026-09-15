@@ -25,8 +25,13 @@ podem ser escolhidas com o rato, `↑`, `↓` e `Return`.
 Ao premir `⌥V` com uma imagem no clipboard, a app insere uma referência
 `[Image #N]` na posição do cursor e guarda o anexo correspondente. `⌘V` mantém
 o paste normal de texto. As referências de imagem e as skills aparecem com a
-cor de acento nativa do macOS; apagar ou substituir qualquer parte remove ou
-substitui o token completo.
+cor de acento nativa do macOS depois de confirmadas; apagar ou substituir
+qualquer parte remove ou substitui o token completo. Enquanto uma skill está a
+ser pesquisada, `$...` continua texto normal e editável.
+
+Ao clicar no botão de imagem, a app abre uma janela de pré-visualização. A
+imagem só é inserida depois de o utilizador escolher `Paste image`; `Cancel`
+fecha a janela sem alterar o editor.
 
 ## Alternar workspace
 

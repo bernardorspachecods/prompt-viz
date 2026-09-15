@@ -63,9 +63,10 @@ As invariantes são:
 - O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
 - As referências `[Image #N]` são resolvidas contra os anexos do draft; a
   automação cola cada segmento de texto ou PNG pela ordem original.
-- O editor identifica referências de imagem e skills como tokens inline,
-  aplica-lhes `NSColor.controlAccentColor` e expande edições parciais para o
-  intervalo completo do token.
+- O editor identifica referências de imagem e skills escolhidas como tokens
+  inline, aplica-lhes `NSColor.controlAccentColor` e expande edições parciais
+  para o intervalo completo do token; texto `$...` ainda não escolhido não é
+  tratado como token.
 - A seleção e validação da sessão acontecem antes de qualquer tecla ser publicada.
 
 ### Troca de workspaces

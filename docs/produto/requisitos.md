@@ -31,11 +31,14 @@ o liga à sessão ativa do Codex no Terminal.app.
 - O texto do prompt é editável no compositor da app.
 - Imagens no clipboard podem ser inseridas no editor com `⌥V` e aparecem como
   referências compactas, por exemplo `[Image #1]`.
-- Referências de imagens e skills aparecem a azul-acento nativo do macOS e
-  comportam-se como tokens indivisíveis: apagar ou substituir qualquer parte
-  remove/substitui a referência completa.
+- Referências de imagens e skills já escolhidas aparecem a azul-acento nativo
+  do macOS e comportam-se como tokens indivisíveis: apagar ou substituir
+  qualquer parte remove/substitui a referência completa. Uma referência `$...`
+  escrita manualmente continua texto normal enquanto está a ser pesquisada.
 - As referências mantêm os anexos associados e o envio cola texto e imagens
   pela ordem do prompt.
+- O botão de imagem abre primeiro uma pré-visualização com ações para cancelar
+  ou confirmar a colagem.
 - O envio substitui o campo do Codex, cola o texto e submete-o com `Return`.
 - Depois de um envio bem-sucedido, o editor fica vazio.
 
@@ -52,7 +55,8 @@ o liga à sessão ativa do Codex no Terminal.app.
 - Ao escrever uma referência iniciada por `$`, o editor apresenta skills
   pesquisáveis.
 - Escolher uma skill insere o seu nome no prompt; a referência fica destacada
-  com a cor de acento nativa e funciona como um bloco indivisível.
+  com a cor de acento nativa e funciona como um bloco indivisível. Antes da
+  escolha, o texto `$...` permanece editável para permitir a pesquisa.
 
 ## Histórico
 

@@ -19,7 +19,7 @@ struct PromptVizContractRunner {
             try promptHistoryContracts()
             try promptImageContracts()
             try promptEditorTokenContracts()
-        print("PromptViz contracts: PASS (43 checks)")
+        print("PromptViz contracts: PASS (45 checks)")
         } catch {
             fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -248,6 +248,14 @@ struct PromptVizContractRunner {
                 in: prompt
             ) == imageRange,
             "editing part of an image reference expands to the whole token"
+        )
+        try check(
+            PromptEditorTokens.editingRange(
+                for: NSRange(location: skillRange.location + 2, length: 1),
+                in: prompt,
+                restrictedTo: [imageRange]
+            ) == nil,
+            "an unselected skill reference remains normal editable text"
         )
         try check(
             PromptEditorTokens.editingRange(

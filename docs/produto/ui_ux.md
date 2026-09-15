@@ -52,4 +52,5 @@
 
 - `⌥V` insere a imagem do clipboard como uma referência `[Image #N]` no editor.
 - `⌘V` continua reservado para paste normal de texto.
-- O botão de imagem junto ao envio executa o mesmo comando como alternativa.
+- O botão de imagem junto ao envio abre uma pré-visualização com confirmação
+  antes de inserir a imagem.
