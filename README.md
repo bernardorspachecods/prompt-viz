@@ -1,51 +1,51 @@
 <div align="center">
   <img src="Assets/PromptWizLogo.svg" width="104" alt="Prompt Wiz">
   <h1>Prompt Wiz</h1>
-  <p>Melhores Prompts. Enviadas sem interrupções.</p>
+  <p>Better prompts. Delivered without interruptions.</p>
 
   <p>
-    <code>⌘E</code>&nbsp; continuar a prompt na app
+    <code>⌘E</code>&nbsp; continue the prompt in the app
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <code>⇧⌘Return</code>&nbsp; colar no terminal
+    <code>⇧⌘Return</code>&nbsp; paste into Terminal
     &nbsp;&nbsp;·&nbsp;&nbsp;
-    <code>⌘Return</code>&nbsp; enviar diretamente
+    <code>⌘Return</code>&nbsp; send directly
   </p>
 </div>
 
-## O teu fluxo, sem interrupções
+## Your workflow, without interruptions
 
 <table align="center">
   <tr>
     <td align="center" width="180">
-      <h3>Captura</h3>
-      <sub>Continua o que estavas a escrever no Codex</sub>
+      <h3>Capture</h3>
+      <sub>Continue what you were writing in Codex</sub>
     </td>
     <td align="center" width="40">→</td>
     <td align="center" width="180">
-      <h3>Compõe</h3>
-      <sub>Edita, organiza<br>e melhora</sub>
+      <h3>Compose</h3>
+      <sub>Edit, organize<br>and improve</sub>
     </td>
     <td align="center" width="40">→</td>
     <td align="center" width="180">
-      <h3>Envia</h3>
-      <sub>Entrega no Terminal<br>com duas teclas</sub>
+      <h3>Send</h3>
+      <sub>Deliver to Terminal<br>with two keystrokes</sub>
     </td>
   </tr>
 </table>
 
 <br>
 
-## Funcionalidades
+## Features
 
-- manter um workspace separado para cada sessão ou tab do Terminal;
-- criar, editar, favoritar, organizar e inserir snippets reutilizáveis;
-- pesquisar skills locais escrevendo `$` e inserir imagens do clipboard como referências no texto;
-- colar a prompt no Codex com `⇧⌘Return` para continuar a editá-la no Terminal, ou enviá-la diretamente com `⌘Return`;
-- consultar o histórico local de prompts enviados, incluindo as imagens associadas, e recuperar qualquer entrada para a editar novamente.
+- keep a separate workspace for each Terminal session or tab;
+- create, edit, favorite, organize and insert reusable snippets;
+- search local skills by typing `$` and insert clipboard images as references in the prompt;
+- paste the prompt into Codex with `⇧⌘Return` to keep editing it in Terminal, or send it directly with `⌘Return`;
+- browse the local history of sent prompts, including their associated images, and load any entry for further editing.
 
-A app corre em segundo plano, guarda snippets e histórico localmente e usa as
-permissões de Acessibilidade do macOS apenas para ler a sessão ativa e
-automatizar o Terminal.app.
+The app runs in the background, stores snippets and history locally, and uses
+macOS Accessibility permissions only to read the active session and automate
+Terminal.app.
 
 <br>
 
@@ -54,5 +54,5 @@ automatizar o Terminal.app.
 ```
 
 <p align="center">
-  <sub>macOS 13+ · Terminal.app · corre localmente</sub>
+  <sub>macOS 13+ · Terminal.app · runs locally</sub>
 </p>
