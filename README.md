@@ -43,9 +43,7 @@
 - paste the prompt into Codex with `⇧⌘Return` to keep editing it in Terminal, or send it directly with `⌘Return`;
 - browse the local history of sent prompts, including their associated images, and load any entry for further editing.
 
-The app runs in the background, stores snippets and history locally, and uses
-macOS Accessibility permissions only to read the active session and automate
-Terminal.app.
+The app uses macOS Accessibility permissions only to read the active session and automate Terminal.app.
 
 <br>
 
