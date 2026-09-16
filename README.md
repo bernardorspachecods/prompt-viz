@@ -6,6 +6,8 @@
   <p>
     <code>⌘E</code>&nbsp; abrir
     &nbsp;&nbsp;·&nbsp;&nbsp;
+    <code>⇧⌘Return</code>&nbsp; colar
+    &nbsp;&nbsp;·&nbsp;&nbsp;
     <code>⌘Return</code>&nbsp; enviar
     &nbsp;&nbsp;·&nbsp;&nbsp;
     <code>⌥V</code>&nbsp; imagem

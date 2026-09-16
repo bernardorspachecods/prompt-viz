@@ -10,6 +10,11 @@ protocol TerminalAutomationProviding: AnyObject, Sendable {
     func activeSession() throws -> TerminalSession
     func activeCodexDraft() throws -> String
     func liveSessionInventory() -> TerminalSessionInventory?
+    func pasteCodexInput(
+        _ buffer: String,
+        imageAttachments: [PromptImageAttachment],
+        to expectedSession: TerminalSession
+    ) throws
     func sendCodexInputAndReturn(
         _ buffer: String,
         imageAttachments: [PromptImageAttachment],

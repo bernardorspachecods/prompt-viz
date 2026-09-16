@@ -13,7 +13,7 @@ App shell macOS (background agent)
   ├── SnippetLibrary ────────► snippets
   ├── PromptHistoryStore ────► sent prompts
   ├── App state ─────────────► editor + insertion
-  └── TerminalAutomation ────► focus + paste + Return
+  └── TerminalAutomation ────► focus + paste (+ Return on send)
 ```
 
 O desenho separa responsabilidades em módulos com interfaces pequenas:
@@ -37,9 +37,9 @@ para a mais antiga, com pesquisa por prompt/sessão e limite de 100 entradas.
 ### `TerminalAutomation`
 
 É a fronteira entre a app e as APIs de Acessibilidade do macOS. Identifica a
-sessão ativa, captura o draft visível do Codex, foca a tab correta e executa
-substituição + `Return` no envio. A lógica de parsing fica no domínio puro e é
-exercida pelo contract runner.
+sessão ativa, captura o draft visível do Codex, foca a tab correta e executa a
+substituição do input; no envio acrescenta `Return`. A lógica de parsing fica
+no domínio puro e é exercida pelo contract runner.
 
 ## Fronteiras SwiftUI/AppKit
 
@@ -65,8 +65,10 @@ As invariantes são:
 - `⌘E` captura o último bloco iniciado por `›` e terminado pela linha de estado do Codex.
 - A parser remove a margem visual das linhas reais e junta continuações causadas por wrap.
 - Depois da captura, o editor recebe o foco e o cursor fica no fim lógico do draft, com um espaço de continuação se o texto não terminar em whitespace.
+- Ao reabrir uma sessão existente, uma resposta vazia ou só com whitespace do Terminal preserva o `Workspace.draft` e os respetivos anexos; numa sessão nova, o draft permanece vazio.
 - As alterações posteriores existem apenas no editor da app até ao envio.
 - O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
+- O paste sem envio substitui o conteúdo atual do campo depois de uma breve pausa para o paste concluir, mas não envia `Return` nem altera o histórico ou o rascunho do compositor.
 - As referências `[Image #N]` são resolvidas contra os anexos do draft; a
   automação cola cada segmento de texto ou PNG pela ordem original.
 - O editor identifica referências de imagem e skills escolhidas como tokens

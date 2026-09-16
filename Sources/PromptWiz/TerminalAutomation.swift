@@ -212,11 +212,34 @@ final class TerminalAutomation: @unchecked Sendable {
         return inventory
     }
 
+    func pasteCodexInput(
+        _ buffer: String,
+        imageAttachments: [PromptImageAttachment] = [],
+        to expectedSession: TerminalSession
+    ) throws {
+        let processIdentifier = try prepareForCodexInput(to: expectedSession)
+        try pastePrompt(
+            buffer,
+            imageAttachments: imageAttachments,
+            to: processIdentifier
+        )
+    }
+
     func sendCodexInputAndReturn(
         _ buffer: String,
         imageAttachments: [PromptImageAttachment] = [],
         to expectedSession: TerminalSession
     ) throws {
+        let processIdentifier = try prepareForCodexInput(to: expectedSession)
+        try pastePrompt(
+            buffer,
+            imageAttachments: imageAttachments,
+            to: processIdentifier
+        )
+        postKey(virtualKey: 36, flags: [], to: processIdentifier)
+    }
+
+    private func prepareForCodexInput(to expectedSession: TerminalSession) throws -> pid_t {
         guard let expectedTTY = expectedSession.tty else {
             throw TerminalAutomationError.sessionChanged
         }
@@ -240,12 +263,7 @@ final class TerminalAutomation: @unchecked Sendable {
 
         postKey(virtualKey: 0, flags: .maskControl, to: expectedSession.processIdentifier)
         postKey(virtualKey: 40, flags: .maskControl, to: expectedSession.processIdentifier)
-        try pastePrompt(
-            buffer,
-            imageAttachments: imageAttachments,
-            to: expectedSession.processIdentifier
-        )
-        postKey(virtualKey: 36, flags: [], to: expectedSession.processIdentifier)
+        return expectedSession.processIdentifier
     }
 
     private func pastePrompt(

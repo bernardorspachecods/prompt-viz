@@ -17,10 +17,13 @@ struct PromptWizModelTests {
     static func main() {
         do {
             try captureCreatesWorkspaceAndPreparesDraftForContinuation()
+            try captureKeepsExistingWorkspaceDraftWhenTerminalIsEmpty()
             try captureFailureKeepsTheModelUsable()
             try sendUsesInjectedAutomationAndPersistsHistory()
+            try pasteToTerminalDoesNotSendOrClearThePrompt()
             try snippetsAndClipboardUseTheInjectedDependencies()
             try snippetsMigrateFromThePreviousAppKey()
+            try inlineStylingDoesNotCancelMarkedTextComposition()
             try selectedSkillKeepsItsStyleAfterTextSynchronization()
             try selectingSkillPublishesPersistentSelectionRange()
             try cursorNavigationSkipsImageAndSelectedSkillBlocks()
@@ -76,6 +79,34 @@ struct PromptWizModelTests {
             "capture stores the prepared draft in the workspace"
         )
         try check(openedMainWindow, "capture requests the main window")
+    }
+
+    private static func captureKeepsExistingWorkspaceDraftWhenTerminalIsEmpty() throws {
+        let automation = TerminalAutomationFake(
+            session: TerminalSession(
+                id: "/dev/ttys005",
+                title: "Prompt Wiz — Existing draft test",
+                processIdentifier: 202,
+                tty: "/dev/ttys005"
+            ),
+            draft: "Draft initially visible in Terminal"
+        )
+        let model = makeModel(automation: automation)
+
+        model.captureActiveTerminalSession()
+        model.updateEditorText("Texto guardado na app")
+        automation.draft = "   \n"
+
+        model.captureActiveTerminalSession()
+
+        try check(
+            model.editorText == "Texto guardado na app",
+            "an empty Terminal keeps the existing app draft when reopening its workspace"
+        )
+        try check(
+            model.selectedWorkspace?.draft == "Texto guardado na app",
+            "an empty Terminal does not overwrite the existing workspace draft"
+        )
     }
 
     private static func captureFailureKeepsTheModelUsable() throws {
@@ -139,6 +170,36 @@ struct PromptWizModelTests {
             "send persists the updated history"
         )
         try check(model.editorText.isEmpty, "successful send clears the editor")
+    }
+
+    private static func pasteToTerminalDoesNotSendOrClearThePrompt() throws {
+        let automation = TerminalAutomationFake(
+            session: TerminalSession(
+                id: "/dev/ttys004",
+                title: "Prompt Wiz — Paste test",
+                processIdentifier: 101,
+                tty: "/dev/ttys004"
+            )
+        )
+        let model = makeModel(automation: automation)
+        var minimizedComposer = false
+        model.minimizeMainWindowHandler = { minimizedComposer = true }
+        model.captureActiveTerminalSession()
+        model.updateEditorText("  Colar isto  ")
+
+        model.pasteToTerminal()
+
+        try check(
+            automation.pastedBuffers == ["  Colar isto  "],
+            "paste forwards the current editor buffer to Terminal.app"
+        )
+        try check(automation.sentBuffers.isEmpty, "paste does not submit the prompt")
+        try check(model.history.isEmpty, "paste does not add a history entry")
+        try check(
+            model.selectedWorkspace?.draft == "  Colar isto  ",
+            "paste keeps the prompt in the composer"
+        )
+        try check(!minimizedComposer, "paste keeps the composer visible")
     }
 
     private static func snippetsAndClipboardUseTheInjectedDependencies() throws {
@@ -252,6 +313,32 @@ struct PromptWizModelTests {
                 restrictedTo: [skillRange]
             ) == skillRange,
             "editing inside a selected skill expands to the whole skill token"
+        )
+    }
+
+    private static func inlineStylingDoesNotCancelMarkedTextComposition() throws {
+        let textView = NSTextView(frame: .zero)
+        textView.string = "a"
+        textView.setSelectedRange(NSRange(location: 1, length: 0))
+        textView.setMarkedText(
+            "´",
+            selectedRange: NSRange(location: 1, length: 0),
+            replacementRange: NSRange(location: 1, length: 0)
+        )
+
+        try check(textView.hasMarkedText(), "the editor exposes the pending accent composition")
+
+        let marker = NSAttributedString.Key("PromptWiz.testTypingAttribute")
+        textView.typingAttributes = [marker: "preserve"]
+        PromptTextEditor.applyInlineTokenStyles(to: textView, selectedSkillRanges: [])
+
+        try check(
+            textView.hasMarkedText(),
+            "inline styling keeps the pending accent composition alive"
+        )
+        try check(
+            textView.typingAttributes[marker] as? String == "preserve",
+            "inline styling does not replace typing attributes during composition"
         )
     }
 
@@ -377,10 +464,12 @@ struct PromptWizModelTests {
 private final class TerminalAutomationFake: TerminalAutomationProviding, @unchecked Sendable {
     let isTerminalFrontmost: Bool
     private let session: TerminalSession
-    private let draft: String
+    var draft: String
     private(set) var activeSessionCallCount = 0
     private(set) var sentBuffers: [String] = []
     private(set) var sentSessions: [TerminalSession] = []
+    private(set) var pastedBuffers: [String] = []
+    private(set) var pastedSessions: [TerminalSession] = []
 
     init(
         isTerminalFrontmost: Bool = true,
@@ -420,6 +509,15 @@ private final class TerminalAutomationFake: TerminalAutomationProviding, @unchec
     ) throws {
         sentBuffers.append(buffer)
         sentSessions.append(expectedSession)
+    }
+
+    func pasteCodexInput(
+        _ buffer: String,
+        imageAttachments: [PromptImageAttachment],
+        to expectedSession: TerminalSession
+    ) throws {
+        pastedBuffers.append(buffer)
+        pastedSessions.append(expectedSession)
     }
 
     func requestTabSelection(tty: String) {}

@@ -14,6 +14,10 @@ estrutura acessível do compositor não estiver disponível, a app apresenta um
 erro. Quando aplicável, o erro inclui uma ação para abrir as definições de
 Acessibilidade ou Automação.
 
+Se a sessão já tiver um workspace correspondente na app e o compositor do
+Terminal estiver vazio, o draft guardado no workspace é reaberto sem ser
+apagado. Uma sessão nova sem conteúdo continua a abrir com o editor vazio.
+
 ## Editar e inserir conteúdo
 
 O utilizador pode escrever diretamente no editor ou inserir um snippet da barra
@@ -53,6 +57,18 @@ aparecem no prompt antes de `Return` ser enviado.
 
 O botão fica indisponível quando o editor contém apenas espaços ou linhas
 vazias.
+
+## Colar no Terminal sem enviar
+
+1. O utilizador escolhe `Paste` ou usa `⇧⌘Return`.
+2. A app confirma que existe uma sessão ativa e volta a selecionar o seu TTY.
+3. A app valida que a sessão selecionada continua a ser a esperada.
+4. O conteúdo é colado no compositor do Codex, sem enviar `Return`.
+5. O rascunho continua no editor e não é acrescentado ao histórico.
+
+O botão fica indisponível quando o editor contém apenas espaços ou linhas
+vazias. Quando existem imagens, o texto e cada anexo são colados pela ordem
+em que aparecem no prompt.
 
 ## Fechar workspace
 

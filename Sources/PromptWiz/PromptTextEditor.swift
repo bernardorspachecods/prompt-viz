@@ -50,7 +50,7 @@ struct PromptTextEditor: NSViewRepresentable {
         context.coordinator.onSkillKeyboardAction = onSkillKeyboardAction
         context.coordinator.onImagePaste = onImagePaste
 
-        if textView.string != text {
+        if !textView.hasMarkedText(), textView.string != text {
             let location = min(textView.selectedRange().location, text.utf16.count)
             context.coordinator.isApplyingModelText = true
             textView.string = text
@@ -58,7 +58,9 @@ struct PromptTextEditor: NSViewRepresentable {
             context.coordinator.isApplyingModelText = false
         }
 
-        Self.applyInlineTokenStyles(to: textView, selectedSkillRanges: selectedSkillRanges)
+        if !textView.hasMarkedText() {
+            Self.applyInlineTokenStyles(to: textView, selectedSkillRanges: selectedSkillRanges)
+        }
 
         if let cursorLocationRequest {
             let location = min(max(0, cursorLocationRequest), (textView.string as NSString).length)
@@ -155,6 +157,7 @@ struct PromptTextEditor: NSViewRepresentable {
         to textView: NSTextView,
         selectedSkillRanges: [NSRange]
     ) {
+        guard !textView.hasMarkedText() else { return }
         guard let textStorage = textView.textStorage else { return }
 
         let fullRange = NSRange(location: 0, length: textStorage.length)
@@ -269,6 +272,7 @@ struct PromptTextEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             guard !isApplyingModelText else { return }
             text = textView.string
+            guard !textView.hasMarkedText() else { return }
             PromptTextEditor.applyInlineTokenStyles(
                 to: textView,
                 selectedSkillRanges: selectedSkillRanges
@@ -280,6 +284,8 @@ struct PromptTextEditor: NSViewRepresentable {
             willChangeSelectionFromCharacterRanges oldSelectedCharRanges: [NSValue],
             toCharacterRanges newSelectedCharRanges: [NSValue]
         ) -> [NSValue] {
+            guard !textView.hasMarkedText() else { return newSelectedCharRanges }
+
             let blockedRanges = PromptTextEditor.semanticTokenRanges(
                 in: textView,
                 selectedSkillRanges: selectedSkillRanges
@@ -302,6 +308,8 @@ struct PromptTextEditor: NSViewRepresentable {
             shouldChangeTextIn affectedCharRange: NSRange,
             replacementString: String?
         ) -> Bool {
+            guard !textView.hasMarkedText() else { return true }
+
             if let tokenRange = PromptEditorTokens.editingRange(
                 for: affectedCharRange,
                 in: textView.string,

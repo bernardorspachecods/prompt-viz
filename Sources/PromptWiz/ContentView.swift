@@ -139,6 +139,13 @@ struct ContentView: View {
                     .keyboardShortcut("v", modifiers: [.option])
                     .help("Paste image (⌥V)")
 
+                    Button("Paste") {
+                        model.pasteToTerminal()
+                    }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                    .help("Paste to Terminal without sending (⇧⌘Return)")
+                    .disabled(model.editorText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
                     Button("Send") {
                         model.send()
                     }

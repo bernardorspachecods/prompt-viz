@@ -130,7 +130,6 @@ final class PromptWizModel: ObservableObject {
         do {
             let session = try terminalAutomation.activeSession()
             let codexDraft = try terminalAutomation.activeCodexDraft()
-            let editorDraft = CodexDraftEditor.prepareForContinuation(codexDraft)
             activeSession = session
             let workspace = workspaceStore.workspace(
                 for: session.id,
@@ -138,12 +137,23 @@ final class PromptWizModel: ObservableObject {
                 terminalTTY: session.tty,
                 terminalProcessIdentifier: session.processIdentifier
             )
+            let terminalHasDraft = !codexDraft
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty
+            let editorDraft = terminalHasDraft
+                ? CodexDraftEditor.prepareForContinuation(codexDraft)
+                : workspace.draft
+            let imageAttachments = terminalHasDraft ? [] : workspace.imageAttachments
             selectedWorkspaceID = workspace.id
             setEditorText(editorDraft)
-            editorImageAttachments = []
+            editorImageAttachments = imageAttachments
             editorCursorLocationRequest = (editorDraft as NSString).length
             editorFocusRequest = UUID()
-            workspaceStore.updateDraft(editorDraft, for: workspace.id)
+            workspaceStore.updateDraft(
+                editorDraft,
+                imageAttachments: imageAttachments,
+                for: workspace.id
+            )
             sync()
             openMainWindow()
             PromptWizLog.info("Terminal session captured successfully")
@@ -284,6 +294,33 @@ final class PromptWizModel: ObservableObject {
         guard imagePastePreview?.id == preview.id else { return }
         imagePastePreview = nil
         PromptWizLog.info("Image paste cancelled from preview")
+    }
+
+    func pasteToTerminal() {
+        shouldOfferAccessibilitySettings = false
+        shouldOfferAutomationSettings = false
+
+        guard let activeSession else {
+            errorMessage = TerminalAutomationError.terminalNotActive.localizedDescription
+            return
+        }
+
+        do {
+            let textToPaste = latestEditorText
+            guard !textToPaste.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            PromptWizLog.info("Pasting prompt with \(editorImageAttachments.count) image attachment(s)")
+            try terminalAutomation.pasteCodexInput(
+                textToPaste,
+                imageAttachments: editorImageAttachments,
+                to: activeSession
+            )
+            PromptWizLog.info("Prompt pasted successfully")
+        } catch {
+            PromptWizLog.error(error, context: "Could not paste prompt")
+            errorMessage = error.localizedDescription
+            shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
+            shouldOfferAutomationSettings = (error as? TerminalAutomationError)?.isAutomationNotTrusted == true
+        }
     }
 
     func loadHistoryEntry(_ entry: PromptHistoryEntry) {
