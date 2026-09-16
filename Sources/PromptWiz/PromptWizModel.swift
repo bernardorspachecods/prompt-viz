@@ -111,6 +111,7 @@ final class PromptWizModel: ObservableObject {
 
     func captureActiveTerminalSession() {
         PromptWizLog.info("Capturing active Terminal session")
+        errorMessage = nil
         // Capture can switch to a new workspace, so persist the current editor
         // before changing selectedWorkspaceID or letting the new tab activate.
         saveCurrentDraft()

@@ -18,6 +18,7 @@ struct PromptWizModelTests {
     static func main() {
         do {
             try captureCreatesWorkspaceAndPreparesDraftForContinuation()
+            try successfulCaptureDismissesPreviousError()
             try captureRecoversImageAttachmentFromTerminalClipboard()
             try captureKeepsExistingWorkspaceDraftWhenTerminalIsEmpty()
             try captureFailureKeepsTheModelUsable()
@@ -83,6 +84,22 @@ struct PromptWizModelTests {
             "capture stores the prepared draft in the workspace"
         )
         try check(openedMainWindow, "capture requests the main window")
+    }
+
+    private static func successfulCaptureDismissesPreviousError() throws {
+        let automation = TerminalAutomationFake(isTerminalFrontmost: false)
+        let model = makeModel(automation: automation)
+
+        model.captureActiveTerminalSession()
+        try check(model.errorMessage != nil, "failed capture publishes an error")
+
+        automation.isTerminalFrontmost = true
+        model.captureActiveTerminalSession()
+
+        try check(
+            model.errorMessage == nil,
+            "successful capture clears an error from a previous attempt"
+        )
     }
 
     private static func captureRecoversImageAttachmentFromTerminalClipboard() throws {
@@ -587,7 +604,7 @@ struct PromptWizModelTests {
 }
 
 private final class TerminalAutomationFake: TerminalAutomationProviding, @unchecked Sendable {
-    let isTerminalFrontmost: Bool
+    var isTerminalFrontmost: Bool
     private let session: TerminalSession
     var draft: String
     private(set) var activeSessionCallCount = 0
