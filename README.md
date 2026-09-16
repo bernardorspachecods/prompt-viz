@@ -29,3 +29,9 @@ swift run PromptVizContractRunner
 ```
 
 O contract runner valida a lógica pura de workspaces e snippets sem depender de uma janela gráfica ou de permissões de Acessibilidade.
+
+Para validar a coordenação da app com dependências falsas:
+
+```bash
+./scripts/run-prompt-viz-tests.sh
+```
