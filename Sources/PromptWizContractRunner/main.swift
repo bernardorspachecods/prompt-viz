@@ -19,7 +19,8 @@ struct PromptWizContractRunner {
             try promptHistoryContracts()
             try promptImageContracts()
             try promptEditorTokenContracts()
-        print("PromptWiz contracts: PASS (45 checks)")
+            try promptListContinuationContracts()
+            print("PromptWiz contracts: PASS (49 checks)")
         } catch {
             fputs("PromptWiz contracts: FAIL — \(error)\n", stderr)
             exit(1)
@@ -282,6 +283,55 @@ struct PromptWizContractRunner {
                 in: prompt
             ) == nil,
             "typing immediately after a token remains outside the token"
+        )
+    }
+
+    private static func promptListContinuationContracts() throws {
+        let numberedText = "1. primeiro item"
+        let numberedEdit = PromptListContinuation.edit(
+            in: numberedText,
+            selectionRange: NSRange(location: numberedText.utf16.count, length: 0)
+        )
+        try check(
+            numberedEdit == PromptListEdit(
+                range: NSRange(location: numberedText.utf16.count, length: 0),
+                replacement: "\n2. "
+            ),
+            "numbered lists continue with the next number"
+        )
+
+        let bulletText = "  - primeiro item"
+        let bulletEdit = PromptListContinuation.edit(
+            in: bulletText,
+            selectionRange: NSRange(location: bulletText.utf16.count, length: 0)
+        )
+        try check(
+            bulletEdit == PromptListEdit(
+                range: NSRange(location: bulletText.utf16.count, length: 0),
+                replacement: "\n  - "
+            ),
+            "dash lists continue with the same marker and indentation"
+        )
+
+        let emptyListText = "1. "
+        let emptyListEdit = PromptListContinuation.edit(
+            in: emptyListText,
+            selectionRange: NSRange(location: emptyListText.utf16.count, length: 0)
+        )
+        try check(
+            emptyListEdit == PromptListEdit(
+                range: NSRange(location: 0, length: emptyListText.utf16.count),
+                replacement: "\n"
+            ),
+            "pressing Return on an empty numbered item exits the list"
+        )
+
+        try check(
+            PromptListContinuation.edit(
+                in: "texto normal",
+                selectionRange: NSRange(location: 12, length: 0)
+            ) == nil,
+            "ordinary lines do not receive list continuation"
         )
     }
 

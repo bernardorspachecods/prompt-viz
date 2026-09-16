@@ -21,17 +21,25 @@ apagado. Uma sessão nova sem conteúdo continua a abrir com o editor vazio.
 ## Editar e inserir conteúdo
 
 O utilizador pode escrever diretamente no editor ou inserir um snippet da barra
- lateral.
+lateral.
+
+Ao escrever uma lista com `1.` ou `-` e premir `Return`, a linha seguinte recebe
+automaticamente o próximo número ou o mesmo marcador, preservando a indentação.
+Premir `Return` numa entrada vazia termina a lista.
 
 Ao escrever `$`, o editor mostra as skills encontradas localmente. As sugestões
 podem ser escolhidas com o rato, `↑`, `↓` e `Return`.
 
-Ao premir `⌥V` com uma imagem no clipboard, a app insere uma referência
+Ao premir `⌥V` ou `⌃V` com uma imagem no clipboard, a app insere uma referência
 `[Image #N]` na posição do cursor e guarda o anexo correspondente. `⌘V` mantém
 o paste normal de texto. As referências de imagem e as skills aparecem com a
 cor de acento nativa do macOS depois de confirmadas; apagar ou substituir
 qualquer parte remove ou substitui o token completo. Enquanto uma skill está a
 ser pesquisada, `$...` continua texto normal e editável.
+
+Se o draft já tiver uma referência `[Image #N]` porque a imagem foi colada
+diretamente no Terminal antes de usar `⌘E`, a app recupera o PNG do clipboard
+quando este ainda estiver disponível.
 
 Ao clicar no botão de imagem, a app abre uma janela de pré-visualização. A
 imagem só é inserida depois de o utilizador escolher `Paste image`; `Cancel`

@@ -88,9 +88,10 @@ enum SkillKeyboardAction {
 
 func isImagePasteShortcut(_ event: NSEvent) -> Bool {
     let modifiers = event.modifierFlags
-    guard modifiers.contains(.option),
-          !modifiers.contains(.command),
-          !modifiers.contains(.control)
+    let usesOption = modifiers.contains(.option) && !modifiers.contains(.control)
+    let usesControl = modifiers.contains(.control) && !modifiers.contains(.option)
+    guard (usesOption || usesControl),
+          !modifiers.contains(.command)
     else { return false }
 
     return event.keyCode == 9 ||

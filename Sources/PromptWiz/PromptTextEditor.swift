@@ -395,6 +395,34 @@ struct PromptTextEditor: NSViewRepresentable {
                 if NSApp.currentEvent?.modifierFlags.contains(.command) == true {
                     return false
                 }
+
+                if let listEdit = PromptListContinuation.edit(
+                    in: textView.string,
+                    selectionRange: textView.selectedRange()
+                ) {
+                    selectedSkillRanges = adjustedSelectedSkillRanges(
+                        afterReplacing: listEdit.range,
+                        withUTF16Length: listEdit.replacement.utf16.count
+                    )
+                    isApplyingModelText = true
+                    textView.textStorage?.replaceCharacters(
+                        in: listEdit.range,
+                        with: listEdit.replacement
+                    )
+                    textView.setSelectedRange(NSRange(
+                        location: listEdit.range.location + listEdit.replacement.utf16.count,
+                        length: 0
+                    ))
+                    isApplyingModelText = false
+                    text = textView.string
+                    PromptTextEditor.applyInlineTokenStyles(
+                        to: textView,
+                        selectedSkillRanges: selectedSkillRanges
+                    )
+                    PromptWizLog.info("List continuation inserted")
+                    return true
+                }
+
                 return onSkillKeyboardAction(.choose)
             default:
                 return false

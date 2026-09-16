@@ -1,6 +1,7 @@
 import Darwin
 import AppKit
 import Foundation
+import SwiftUI
 import PromptWizCore
 
 private struct TestFailure: Error, CustomStringConvertible {
@@ -17,6 +18,7 @@ struct PromptWizModelTests {
     static func main() {
         do {
             try captureCreatesWorkspaceAndPreparesDraftForContinuation()
+            try captureRecoversImageAttachmentFromTerminalClipboard()
             try captureKeepsExistingWorkspaceDraftWhenTerminalIsEmpty()
             try captureFailureKeepsTheModelUsable()
             try sendUsesInjectedAutomationAndPersistsHistory()
@@ -27,6 +29,8 @@ struct PromptWizModelTests {
             try selectedSkillKeepsItsStyleAfterTextSynchronization()
             try selectingSkillPublishesPersistentSelectionRange()
             try cursorNavigationSkipsImageAndSelectedSkillBlocks()
+            try imagePasteShortcutAcceptsOptionAndControlV()
+            try editorCoordinatorContinuesNumberedListsOnReturn()
             try shortcutIsRestrictedToTerminalApplication()
             try disablingHideAfterSendKeepsComposerVisible()
             print("PromptWiz seam tests: PASS (\(checkCount) checks)")
@@ -79,6 +83,40 @@ struct PromptWizModelTests {
             "capture stores the prepared draft in the workspace"
         )
         try check(openedMainWindow, "capture requests the main window")
+    }
+
+    private static func captureRecoversImageAttachmentFromTerminalClipboard() throws {
+        let imageData = Data([9, 8, 7])
+        let automation = TerminalAutomationFake(
+            session: TerminalSession(
+                id: "/dev/ttys006",
+                title: "Prompt Wiz — Terminal image test",
+                processIdentifier: 303,
+                tty: "/dev/ttys006"
+            ),
+            draft: "Analisa esta imagem [Image #1]"
+        )
+        let model = makeModel(
+            automation: automation,
+            clipboard: FixedClipboard(data: imageData)
+        )
+
+        model.captureActiveTerminalSession()
+        try check(
+            model.editorImageAttachments.count == 1 &&
+                model.editorImageAttachments[0].number == 1 &&
+                model.editorImageAttachments[0].data == imageData,
+            "capture associates the clipboard image with the Terminal image reference"
+        )
+        model.send()
+
+        try check(
+            automation.sentImageAttachments.count == 1 &&
+                automation.sentImageAttachments[0].count == 1 &&
+                automation.sentImageAttachments[0][0].number == 1 &&
+                automation.sentImageAttachments[0][0].data == imageData,
+            "an image already pasted in Terminal is sent as its PNG attachment"
+        )
     }
 
     private static func captureKeepsExistingWorkspaceDraftWhenTerminalIsEmpty() throws {
@@ -417,6 +455,93 @@ struct PromptWizModelTests {
         )
     }
 
+    private static func imagePasteShortcutAcceptsOptionAndControlV() throws {
+        let optionV = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.option],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "v",
+            charactersIgnoringModifiers: "v",
+            isARepeat: false,
+            keyCode: 9
+        )
+        let controlV = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.control],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "v",
+            charactersIgnoringModifiers: "v",
+            isARepeat: false,
+            keyCode: 9
+        )
+        let commandV = NSEvent.keyEvent(
+            with: .keyDown,
+            location: .zero,
+            modifierFlags: [.command],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "v",
+            charactersIgnoringModifiers: "v",
+            isARepeat: false,
+            keyCode: 9
+        )
+
+        try check(
+            optionV.map(isImagePasteShortcut) == true,
+            "Option+V remains an image paste shortcut"
+        )
+        try check(
+            controlV.map(isImagePasteShortcut) == true,
+            "Control+V is accepted as an image paste shortcut"
+        )
+        try check(
+            commandV.map(isImagePasteShortcut) == false,
+            "Command+V remains normal text paste"
+        )
+    }
+
+    private static func editorCoordinatorContinuesNumberedListsOnReturn() throws {
+        var text = "1. primeiro item"
+        var selectedSkillRanges: [NSRange] = []
+        let coordinator = PromptTextEditor.Coordinator(
+            text: Binding(
+                get: { text },
+                set: { text = $0 }
+            ),
+            selectedSkillRanges: Binding(
+                get: { selectedSkillRanges },
+                set: { selectedSkillRanges = $0 }
+            ),
+            onSkillKeyboardAction: { _ in false },
+            onImagePaste: { _, _ in }
+        )
+        let textView = NSTextView(frame: .zero)
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: text.utf16.count, length: 0))
+
+        let handled = coordinator.textView(
+            textView,
+            doCommandBy: #selector(NSResponder.insertNewline(_:))
+        )
+
+        try check(handled, "the editor handles Return for numbered list continuation")
+        try check(
+            textView.string == "1. primeiro item\n2. ",
+            "Return inserts the next numbered list item in the editor"
+        )
+        try check(
+            text == textView.string,
+            "numbered list continuation synchronizes the editor binding"
+        )
+    }
+
     private static func disablingHideAfterSendKeepsComposerVisible() throws {
         let automation = TerminalAutomationFake(
             session: TerminalSession(
@@ -468,6 +593,7 @@ private final class TerminalAutomationFake: TerminalAutomationProviding, @unchec
     private(set) var activeSessionCallCount = 0
     private(set) var sentBuffers: [String] = []
     private(set) var sentSessions: [TerminalSession] = []
+    private(set) var sentImageAttachments: [[PromptImageAttachment]] = []
     private(set) var pastedBuffers: [String] = []
     private(set) var pastedSessions: [TerminalSession] = []
 
@@ -509,6 +635,7 @@ private final class TerminalAutomationFake: TerminalAutomationProviding, @unchec
     ) throws {
         sentBuffers.append(buffer)
         sentSessions.append(expectedSession)
+        sentImageAttachments.append(imageAttachments)
     }
 
     func pasteCodexInput(

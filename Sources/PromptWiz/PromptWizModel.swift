@@ -143,7 +143,9 @@ final class PromptWizModel: ObservableObject {
             let editorDraft = terminalHasDraft
                 ? CodexDraftEditor.prepareForContinuation(codexDraft)
                 : workspace.draft
-            let imageAttachments = terminalHasDraft ? [] : workspace.imageAttachments
+            let imageAttachments = terminalHasDraft
+                ? imageAttachmentsRecovered(from: codexDraft, workspace: workspace)
+                : workspace.imageAttachments
             selectedWorkspaceID = workspace.id
             setEditorText(editorDraft)
             editorImageAttachments = imageAttachments
@@ -482,6 +484,36 @@ final class PromptWizModel: ObservableObject {
             imageAttachments: editorImageAttachments,
             for: selectedWorkspaceID
         )
+    }
+
+    private func imageAttachmentsRecovered(
+        from draft: String,
+        workspace: Workspace
+    ) -> [PromptImageAttachment] {
+        let referencedNumbers = PromptImageReference.numbers(in: draft)
+        guard !referencedNumbers.isEmpty else { return [] }
+
+        var attachments = workspace.imageAttachments.filter {
+            referencedNumbers.contains($0.number)
+        }
+        let attachedNumbers = Set(attachments.map(\.number))
+        let missingNumbers = referencedNumbers.filter { !attachedNumbers.contains($0) }
+
+        if missingNumbers.count == 1,
+           let data = clipboard.pngData(),
+           !data.isEmpty {
+            attachments.append(
+                PromptImageAttachment(number: missingNumbers[0], data: data)
+            )
+            PromptWizLog.info("Recovered one image attachment from the Terminal clipboard")
+        }
+
+        let order = Dictionary(uniqueKeysWithValues: referencedNumbers.enumerated().map {
+            ($1, $0)
+        })
+        return attachments.sorted {
+            (order[$0.number] ?? Int.max) < (order[$1.number] ?? Int.max)
+        }
     }
 
     private func setEditorText(_ text: String) {

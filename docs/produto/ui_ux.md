@@ -50,7 +50,13 @@
 
 ## Imagens
 
-- `⌥V` insere a imagem do clipboard como uma referência `[Image #N]` no editor.
+- `⌥V` ou `⌃V` inserem a imagem do clipboard como uma referência `[Image #N]` no editor.
 - `⌘V` continua reservado para paste normal de texto.
 - O botão de imagem junto ao envio abre uma pré-visualização com confirmação
   antes de inserir a imagem.
+
+## Listas
+
+- `Return` continua automaticamente listas numeradas iniciadas por `1.` e listas
+  com `-`, preservando a indentação.
+- `Return` numa entrada vazia termina a lista.

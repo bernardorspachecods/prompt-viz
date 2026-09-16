@@ -137,7 +137,7 @@ struct ContentView: View {
                         Image(systemName: "photo")
                     }
                     .keyboardShortcut("v", modifiers: [.option])
-                    .help("Paste image (⌥V)")
+                    .help("Paste image (⌥V or ⌃V)")
 
                     Button("Paste") {
                         model.pasteToTerminal()

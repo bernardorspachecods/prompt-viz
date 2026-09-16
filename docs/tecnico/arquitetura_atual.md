@@ -69,8 +69,14 @@ As invariantes são:
 - As alterações posteriores existem apenas no editor da app até ao envio.
 - O envio substitui o conteúdo atual do campo e envia `Return` depois de uma breve pausa para o paste concluir; não depende de readback AX do texto.
 - O paste sem envio substitui o conteúdo atual do campo depois de uma breve pausa para o paste concluir, mas não envia `Return` nem altera o histórico ou o rascunho do compositor.
+- O `PromptTextEditor` trata `Return` em linhas iniciadas por `1.` ou `-` como
+  uma edição de continuação de lista; uma entrada vazia remove o marcador e
+  termina a lista.
 - As referências `[Image #N]` são resolvidas contra os anexos do draft; a
   automação cola cada segmento de texto ou PNG pela ordem original.
+- Se o draft capturado do Terminal já contiver uma única referência de imagem
+  sem anexo conhecido, o `PromptWizModel` tenta associá-la ao PNG que ainda
+  estiver no clipboard. Referências sem dados recuperáveis permanecem texto.
 - O editor identifica referências de imagem e skills escolhidas como tokens
   inline, aplica-lhes `NSColor.controlAccentColor` e expande edições parciais
   para o intervalo completo do token; texto `$...` ainda não escolhido não é

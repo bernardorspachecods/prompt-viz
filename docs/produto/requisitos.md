@@ -29,8 +29,15 @@ o liga à sessão ativa do Codex no Terminal.app.
 - A app lê o texto renderizado do compositor do Codex através da Acessibilidade.
 - O rascunho capturado pode conter várias linhas e wraps visuais.
 - O texto do prompt é editável no compositor da app.
-- Imagens no clipboard podem ser inseridas no editor com `⌥V` e aparecem como
+- Ao premir `Return` depois de uma linha iniciada por `1.`, a app continua a
+  numeração; depois de uma linha iniciada por `-`, repete o marcador e a
+  indentação.
+- Premir `Return` numa entrada de lista vazia termina a lista.
+- Imagens no clipboard podem ser inseridas no editor com `⌥V` ou `⌃V` e aparecem como
   referências compactas, por exemplo `[Image #1]`.
+- Se o compositor já contiver uma referência de imagem quando é aberto com
+  `⌘E`, a app recupera a imagem do clipboard quando esta ainda está disponível,
+  mantendo a referência associada ao anexo real.
 - Referências de imagens e skills já escolhidas aparecem a azul-acento nativo
   do macOS e comportam-se como tokens indivisíveis: apagar ou substituir
   qualquer parte remove/substitui a referência completa. Uma referência `$...`
