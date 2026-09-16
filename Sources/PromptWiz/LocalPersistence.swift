@@ -4,13 +4,14 @@ import PromptWizCore
 final class LocalSnippetPersistence {
     private let defaults: UserDefaults
     private let key = "prompt-wiz.snippets"
+    private let legacyKey = "prompt-viz.snippets"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
     func load() -> [Snippet]? {
-        guard let data = defaults.data(forKey: key) else { return nil }
+        guard let data = dataWithLegacyMigration() else { return nil }
         guard let snippets = try? JSONDecoder().decode([Snippet].self, from: data) else { return nil }
         return snippets.compactMap { snippet in
             guard snippet.title != "Analisa código" else { return nil }
@@ -43,10 +44,21 @@ final class LocalSnippetPersistence {
         guard let data = try? JSONEncoder().encode(snippets) else { return }
         defaults.set(data, forKey: key)
     }
+
+    private func dataWithLegacyMigration() -> Data? {
+        if let data = defaults.data(forKey: key) {
+            return data
+        }
+
+        guard let data = defaults.data(forKey: legacyKey) else { return nil }
+        defaults.set(data, forKey: key)
+        return data
+    }
 }
 final class LocalPromptHistoryPersistence {
     private let defaults: UserDefaults
     private let key = "prompt-wiz.prompt-history"
+    private let legacyKey = "prompt-viz.prompt-history"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -54,7 +66,7 @@ final class LocalPromptHistoryPersistence {
 
     func load() -> [PromptHistoryEntry] {
         guard
-            let data = defaults.data(forKey: key),
+            let data = dataWithLegacyMigration(),
             let entries = try? JSONDecoder().decode([PromptHistoryEntry].self, from: data)
         else { return [] }
 
@@ -65,18 +77,34 @@ final class LocalPromptHistoryPersistence {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         defaults.set(data, forKey: key)
     }
+
+    private func dataWithLegacyMigration() -> Data? {
+        if let data = defaults.data(forKey: key) {
+            return data
+        }
+
+        guard let data = defaults.data(forKey: legacyKey) else { return nil }
+        defaults.set(data, forKey: key)
+        return data
+    }
 }
 
 struct UserDefaultsSendBehaviorPersistence {
     private let defaults: UserDefaults
     private let key = "prompt-wiz.hide-after-send"
+    private let legacyKey = "prompt-viz.hide-after-send"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
     }
 
     func loadHideAfterSend() -> Bool {
-        guard defaults.object(forKey: key) != nil else { return true }
+        guard defaults.object(forKey: key) == nil else {
+            return defaults.bool(forKey: key)
+        }
+
+        guard let legacyValue = defaults.object(forKey: legacyKey) else { return true }
+        defaults.set(legacyValue, forKey: key)
         return defaults.bool(forKey: key)
     }
 

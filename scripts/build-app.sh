@@ -34,7 +34,9 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key>
     <string>PromptWiz</string>
     <key>CFBundleIdentifier</key>
-    <string>local.prompt-wiz.app</string>
+    <!-- Keep the original identifier so macOS retains the app's shortcut and
+         Terminal automation permissions across the Prompt Wiz rename. -->
+    <string>local.prompt-viz.app</string>
     <key>CFBundleName</key>
     <string>Prompt Wiz</string>
     <key>CFBundlePackageType</key>
@@ -59,6 +61,6 @@ if ! security find-identity -v -p codesigning | grep -Fq "\"$signing_identity\""
     exit 1
 fi
 
-codesign --force --deep --sign "$signing_identity" --identifier local.prompt-wiz.app "$app_dir"
+codesign --force --deep --sign "$signing_identity" --identifier local.prompt-viz.app "$app_dir"
 
 echo "Built $app_dir"

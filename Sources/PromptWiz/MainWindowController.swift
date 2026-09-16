@@ -5,6 +5,7 @@ import SwiftUI
 
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
+    private static let appTitle = "Prompt Wiz"
     private let model: PromptWizModel
     private var windowsByWorkspaceID: [UUID: NSWindow] = [:]
     private var emptyStateWindow: NSWindow?
@@ -23,7 +24,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         if workspaceIDs.isEmpty {
             if emptyStateWindow == nil {
-                emptyStateWindow = createWindow(title: "Prompt Wiz")
+                emptyStateWindow = createWindow(tabTitle: Self.appTitle)
                 emptyStateWindow?.center()
             }
             return
@@ -43,6 +44,10 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         for workspace in model.workspaces where windowsByWorkspaceID[workspace.id] == nil {
             createWindow(for: workspace)
+        }
+
+        for workspace in model.workspaces {
+            windowsByWorkspaceID[workspace.id]?.tab.title = tabTitle(for: workspace.title)
         }
     }
 
@@ -111,7 +116,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
     }
 
     private func createWindow(for workspace: Workspace) {
-        let window = createWindow(title: tabTitle(for: workspace.title))
+        let window = createWindow(tabTitle: tabTitle(for: workspace.title))
         windowsByWorkspaceID[workspace.id] = window
 
         if let existingWindow = windowsByWorkspaceID.values.first(where: { $0 !== window }) {
@@ -121,14 +126,18 @@ final class MainWindowController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func createWindow(title: String) -> NSWindow {
+    private func createWindow(tabTitle: String) -> NSWindow {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 980, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = title
+        // The titlebar belongs to Prompt Wiz; the selected workspace name is
+        // shown by the native tab strip below it.
+        window.title = Self.appTitle
+        window.tab.title = tabTitle
+        window.titleVisibility = .visible
         window.tabbingIdentifier = "com.promptwiz.workspace"
         window.tabbingMode = .preferred
         window.minSize = NSSize(width: 760, height: 500)

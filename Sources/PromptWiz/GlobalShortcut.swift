@@ -45,10 +45,11 @@ struct GlobalShortcut: Codable, Equatable {
 
 enum GlobalShortcutPersistence {
     private static let key = "prompt-wiz.open-composer-shortcut"
+    private static let legacyKey = "prompt-viz.open-composer-shortcut"
 
     static func load(defaults: UserDefaults = .standard) -> GlobalShortcut {
         guard
-            let data = defaults.data(forKey: key),
+            let data = dataWithLegacyMigration(defaults: defaults),
             let shortcut = try? JSONDecoder().decode(GlobalShortcut.self, from: data)
         else { return .defaultShortcut }
 
@@ -58,5 +59,15 @@ enum GlobalShortcutPersistence {
     static func save(_ shortcut: GlobalShortcut, defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(shortcut) else { return }
         defaults.set(data, forKey: key)
+    }
+
+    private static func dataWithLegacyMigration(defaults: UserDefaults) -> Data? {
+        if let data = defaults.data(forKey: key) {
+            return data
+        }
+
+        guard let data = defaults.data(forKey: legacyKey) else { return nil }
+        defaults.set(data, forKey: key)
+        return data
     }
 }

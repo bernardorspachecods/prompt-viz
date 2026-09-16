@@ -20,6 +20,7 @@ struct PromptWizModelTests {
             try captureFailureKeepsTheModelUsable()
             try sendUsesInjectedAutomationAndPersistsHistory()
             try snippetsAndClipboardUseTheInjectedDependencies()
+            try snippetsMigrateFromThePreviousAppKey()
             try selectedSkillKeepsItsStyleAfterTextSynchronization()
             try selectingSkillPublishesPersistentSelectionRange()
             try cursorNavigationSkipsImageAndSelectedSkillBlocks()
@@ -167,6 +168,34 @@ struct PromptWizModelTests {
         try check(
             model.imagePastePreview?.data == Data([1, 2, 3]),
             "image paste reads data through the injected clipboard"
+        )
+    }
+
+    private static func snippetsMigrateFromThePreviousAppKey() throws {
+        let suiteName = "PromptWizSnippetMigrationTests.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suiteName) else {
+            throw TestFailure(message: "could not create isolated defaults for snippet migration")
+        }
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let oldSnippet = Snippet(
+            title: "My saved snippet",
+            body: "This content must survive an app rename.",
+            isFavorite: true,
+            shortcutNumber: 1
+        )
+        let oldData = try JSONEncoder().encode([oldSnippet])
+        defaults.set(oldData, forKey: "prompt-viz.snippets")
+
+        let loadedSnippets = LocalSnippetPersistence(defaults: defaults).load()
+
+        try check(
+            loadedSnippets == [oldSnippet],
+            "snippets saved by the previous app version are loaded after the rename"
+        )
+        try check(
+            defaults.data(forKey: "prompt-wiz.snippets") == oldData,
+            "legacy snippets are copied to the current persistence key"
         )
     }
 
