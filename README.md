@@ -54,5 +54,5 @@ Terminal.app.
 ```
 
 <p align="center">
-  <sub>macOS 13+ · Terminal.app · runs locally</sub>
+  <sub>macOS 13+ · Built exclusively for Terminal.app and Codex · Runs locally on your Mac</sub>
 </p>
