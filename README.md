@@ -1,7 +1,7 @@
 <div align="center">
   <img src="Assets/PromptWizLogo.svg" width="104" alt="Prompt Wiz">
   <h1>Prompt Wiz</h1>
-  <p>Prompts melhores. Enviados sem interrupções.</p>
+  <p>Melhores Prompts. Enviadas sem interrupções.</p>
 
   <p>
     <code>⌘E</code>&nbsp; abrir
@@ -20,7 +20,7 @@
   <tr>
     <td align="center" width="180">
       <h3>Captura</h3>
-      <sub>Apanha o rascunho<br>do Codex</sub>
+      <sub>Continua o que estavas a escrever no Codex</sub>
     </td>
     <td align="center" width="40">→</td>
     <td align="center" width="180">
@@ -30,7 +30,7 @@
     <td align="center" width="40">→</td>
     <td align="center" width="180">
       <h3>Envia</h3>
-      <sub>Entrega no Terminal<br>com um atalho</sub>
+      <sub>Entrega no Terminal<br>com duas teclas</sub>
     </td>
   </tr>
 </table>
