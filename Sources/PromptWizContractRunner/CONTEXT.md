@@ -5,7 +5,7 @@ Este executable valida regras puras do domínio sem depender de `XCTest`, janela
 Executar a partir da raiz:
 
 ```bash
-swift run PromptVizContractRunner
+swift run PromptWizContractRunner
 ```
 
 Adicionar aqui contratos para comportamentos determinísticos; as fronteiras da

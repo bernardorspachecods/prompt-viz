@@ -6,6 +6,6 @@ fronteiras técnicas.
 - [`arquitetura_atual.md`](arquitetura_atual.md): módulos, integrações,
   invariantes e limites da implementação.
 
-As regras de domínio puras estão nos ficheiros de `Sources/PromptVizCore/`,
-separados por coesão; o `PromptVizContractRunner` executa os contratos
+As regras de domínio puras estão nos ficheiros de `Sources/PromptWizCore/`,
+separados por coesão; o `PromptWizContractRunner` executa os contratos
 correspondentes.

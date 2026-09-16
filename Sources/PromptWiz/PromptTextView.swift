@@ -8,7 +8,7 @@ final class PromptTextView: NSTextView {
             return super.performKeyEquivalent(with: event)
         }
 
-        PromptVizLog.info("Image shortcut received through key equivalent")
+        PromptWizLog.info("Image shortcut received through key equivalent")
         if onImagePaste?() == true {
             return true
         }
@@ -18,7 +18,7 @@ final class PromptTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         if isImagePasteShortcut(event) {
-            PromptVizLog.info("Image shortcut received through key down")
+        PromptWizLog.info("Image shortcut received through key down")
             if onImagePaste?() == true {
                 return
             }

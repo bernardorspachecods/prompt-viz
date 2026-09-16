@@ -1,4 +1,4 @@
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 
 struct SnippetEditorSheet: View {

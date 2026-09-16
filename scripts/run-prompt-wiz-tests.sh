@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
-test_dir="$(mktemp -d /private/tmp/prompt-viz-tests.XXXXXX)"
+test_dir="$(mktemp -d /private/tmp/prompt-wiz-tests.XXXXXX)"
 trap 'rm -rf "$test_dir"' EXIT
 module_cache_dir="$test_dir/module-cache"
 mkdir -p "$module_cache_dir"
@@ -12,31 +12,31 @@ cd "$project_root"
 
 swiftc \
     -parse-as-library \
-    -module-name PromptVizCore \
+    -module-name PromptWizCore \
     -emit-module \
     -emit-library \
-    -emit-module-path "$test_dir/PromptVizCore.swiftmodule" \
-    -o "$test_dir/libPromptVizCore.dylib" \
-    Sources/PromptVizCore/*.swift
+    -emit-module-path "$test_dir/PromptWizCore.swiftmodule" \
+    -o "$test_dir/libPromptWizCore.dylib" \
+    Sources/PromptWizCore/*.swift
 
 app_sources=()
-for source in Sources/PromptViz/*.swift; do
-    [[ "$source" == "Sources/PromptViz/PromptVizApp.swift" ]] && continue
+for source in Sources/PromptWiz/*.swift; do
+    [[ "$source" == "Sources/PromptWiz/PromptWizApp.swift" ]] && continue
     app_sources+=("$source")
 done
 
 swiftc \
-    -module-name PromptVizSeamTests \
+    -module-name PromptWizSeamTests \
     -I "$test_dir" \
     -L "$test_dir" \
     -Xlinker -rpath -Xlinker "$test_dir" \
-    -lPromptVizCore \
+    -lPromptWizCore \
     -framework AppKit \
     -framework SwiftUI \
     -framework ApplicationServices \
     -framework ServiceManagement \
-    -o "$test_dir/PromptVizSeamTests" \
+    -o "$test_dir/PromptWizSeamTests" \
     "${app_sources[@]}" \
-    Tests/PromptVizTests/PromptVizModelTests.swift
+    Tests/PromptWizTests/PromptWizModelTests.swift
 
-"$test_dir/PromptVizSeamTests"
+"$test_dir/PromptWizSeamTests"

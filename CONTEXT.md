@@ -1,6 +1,6 @@
 # Contexto do repositório
 
-Este ficheiro orienta a repo-mãe `prompt-viz`.
+Este ficheiro orienta a repo-mãe `prompt-wiz`.
 
 ## Estrutura
 
@@ -18,8 +18,8 @@ Este ficheiro orienta a repo-mãe `prompt-viz`.
   app.
 
 Os testes de coordenação do modelo usam dependências falsas e executam com
-[`scripts/run-prompt-viz-tests.sh`](scripts/run-prompt-viz-tests.sh). O
-`PromptVizContractRunner` continua a validar o domínio puro.
+[`scripts/run-prompt-wiz-tests.sh`](scripts/run-prompt-wiz-tests.sh). O
+`PromptWizContractRunner` continua a validar o domínio puro.
 
 `dist/`, `.build/` e `.swiftpm/` são outputs ou estado gerado; não são entradas
 de desenvolvimento nem devem receber contexto durável.

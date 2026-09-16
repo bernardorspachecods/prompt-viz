@@ -1,7 +1,7 @@
 import Darwin
 import AppKit
 import Foundation
-import PromptVizCore
+import PromptWizCore
 
 private struct TestFailure: Error, CustomStringConvertible {
     let message: String
@@ -11,7 +11,7 @@ private struct TestFailure: Error, CustomStringConvertible {
 
 @main
 @MainActor
-struct PromptVizModelTests {
+struct PromptWizModelTests {
     private static var checkCount = 0
 
     static func main() {
@@ -25,9 +25,9 @@ struct PromptVizModelTests {
             try cursorNavigationSkipsImageAndSelectedSkillBlocks()
             try shortcutIsRestrictedToTerminalApplication()
             try disablingHideAfterSendKeepsComposerVisible()
-            print("PromptViz seam tests: PASS (\(checkCount) checks)")
+            print("PromptWiz seam tests: PASS (\(checkCount) checks)")
         } catch {
-            fputs("PromptViz seam tests: FAIL — \(error)\n", stderr)
+            fputs("PromptWiz seam tests: FAIL — \(error)\n", stderr)
             exit(1)
         }
     }
@@ -43,7 +43,7 @@ struct PromptVizModelTests {
     private static func captureCreatesWorkspaceAndPreparesDraftForContinuation() throws {
         let session = TerminalSession(
             id: "/dev/ttys001",
-            title: "Prompt Viz — Test",
+            title: "Prompt Wiz — Test",
             processIdentifier: 123,
             tty: "/dev/ttys001"
         )
@@ -102,7 +102,7 @@ struct PromptVizModelTests {
         let automation = TerminalAutomationFake(
             session: TerminalSession(
                 id: "/dev/ttys002",
-                title: "Prompt Viz — Send test",
+                title: "Prompt Wiz — Send test",
                 processIdentifier: 456,
                 tty: "/dev/ttys002"
             ),
@@ -175,7 +175,7 @@ struct PromptVizModelTests {
         textView.string = "$grill $other"
         let skillRange = NSRange(location: 0, length: "$grill".utf16.count)
         textView.textStorage?.addAttribute(
-            NSAttributedString.Key("PromptViz.selectedSkill"),
+                NSAttributedString.Key("PromptWiz.selectedSkill"),
             value: true,
             range: skillRange
         )
@@ -183,7 +183,7 @@ struct PromptVizModelTests {
         // AppKit can replace the text storage during SwiftUI synchronization,
         // dropping the temporary selected-skill attribute.
         textView.textStorage?.removeAttribute(
-            NSAttributedString.Key("PromptViz.selectedSkill"),
+                NSAttributedString.Key("PromptWiz.selectedSkill"),
             range: NSRange(location: 0, length: textView.textStorage?.length ?? 0)
         )
         PromptTextEditor.applyInlineTokenStyles(
@@ -305,7 +305,7 @@ struct PromptVizModelTests {
         let automation = TerminalAutomationFake(
             session: TerminalSession(
                 id: "/dev/ttys003",
-                title: "Prompt Viz — Hide setting test",
+                title: "Prompt Wiz — Hide setting test",
                 processIdentifier: 789,
                 tty: "/dev/ttys003"
             )
@@ -331,8 +331,8 @@ struct PromptVizModelTests {
         historyPersistence: any PromptHistoryPersistenceProviding = EmptyPromptHistoryPersistence(),
         clipboard: any ClipboardProviding = EmptyClipboard(),
         sendBehaviorPersistence: any SendBehaviorPersistenceProviding = FixedSendBehaviorPersistence()
-    ) -> PromptVizModel {
-        PromptVizModel(
+    ) -> PromptWizModel {
+        PromptWizModel(
             terminalAutomation: automation,
             snippetPersistence: snippetPersistence,
             promptHistoryPersistence: historyPersistence,
@@ -357,7 +357,7 @@ private final class TerminalAutomationFake: TerminalAutomationProviding, @unchec
         isTerminalFrontmost: Bool = true,
         session: TerminalSession = TerminalSession(
             id: "/dev/ttys001",
-            title: "Prompt Viz — Test",
+            title: "Prompt Wiz — Test",
             processIdentifier: 123,
             tty: "/dev/ttys001"
         ),

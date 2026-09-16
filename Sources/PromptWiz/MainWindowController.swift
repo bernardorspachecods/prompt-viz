@@ -1,16 +1,16 @@
 import AppKit
 import Foundation
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 
 @MainActor
 final class MainWindowController: NSObject, NSWindowDelegate {
-    private let model: PromptVizModel
+    private let model: PromptWizModel
     private var windowsByWorkspaceID: [UUID: NSWindow] = [:]
     private var emptyStateWindow: NSWindow?
     private var isReconciling = false
 
-    init(model: PromptVizModel) {
+    init(model: PromptWizModel) {
         self.model = model
         super.init()
     }
@@ -23,7 +23,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
 
         if workspaceIDs.isEmpty {
             if emptyStateWindow == nil {
-                emptyStateWindow = createWindow(title: "Prompt Viz")
+                emptyStateWindow = createWindow(title: "Prompt Wiz")
                 emptyStateWindow?.center()
             }
             return
@@ -129,7 +129,7 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         window.title = title
-        window.tabbingIdentifier = "com.promptviz.workspace"
+        window.tabbingIdentifier = "com.promptwiz.workspace"
         window.tabbingMode = .preferred
         window.minSize = NSSize(width: 760, height: 500)
         window.contentView = NSHostingView(

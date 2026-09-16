@@ -9,8 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var imagePasteMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        PromptVizLog.info("Application did finish launching")
-        let model = PromptVizModel.shared
+        PromptWizLog.info("Application did finish launching")
+        let model = PromptWizModel.shared
         mainWindowController = MainWindowController(model: model)
         model.openMainWindowHandler = { [weak self] in
             self?.mainWindowController?.show()
@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ),
                 model.openComposerShortcut.matches(event)
             else { return }
-            PromptVizLog.info("Open Composer shortcut pressed")
+                PromptWizLog.info("Open Composer shortcut pressed")
             model.captureActiveTerminalSession()
         }
 
@@ -41,7 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                !modifiers.contains(.option),
                !modifiers.contains(.control),
                !modifiers.contains(.shift) {
-                NotificationCenter.default.post(name: .promptVizOpenSettings, object: nil)
+                NotificationCenter.default.post(name: .promptWizOpenSettings, object: nil)
                 return nil
             }
 
@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         imagePasteMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             if event.modifierFlags.contains(.option) {
-                PromptVizLog.info(
+                PromptWizLog.info(
                     "Option key event: keyCode=\(event.keyCode), characters=\(event.characters ?? "none"), ignoringModifiers=\(event.charactersIgnoringModifiers ?? "none")"
                 )
             }
@@ -70,11 +70,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard isImagePasteShortcut(event) else { return event }
 
             guard let textView = NSApp.keyWindow?.firstResponder as? PromptTextView else {
-                PromptVizLog.info("Image shortcut ignored because the editor is not focused")
+                PromptWizLog.info("Image shortcut ignored because the editor is not focused")
                 return event
             }
 
-            PromptVizLog.info("Image shortcut received by app monitor")
+            PromptWizLog.info("Image shortcut received by app monitor")
             return textView.onImagePaste?() == true ? nil : event
         }
 

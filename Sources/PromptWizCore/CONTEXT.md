@@ -1,4 +1,4 @@
-# Contexto de PromptVizCore
+# Contexto de PromptWizCore
 
 Este target contém domínio sem dependências AppKit ou de permissões macOS.
 
@@ -10,4 +10,4 @@ Este target contém domínio sem dependências AppKit ou de permissões macOS.
 - `WorkspaceStore.swift`, `SnippetLibrary.swift` e `PromptHistoryStore.swift`
   gerem o estado puro correspondente.
 
-As regras devem ser observáveis pelo `PromptVizContractRunner` e não devem depender de ficheiros temporários, janelas ou processos reais.
+As regras devem ser observáveis pelo `PromptWizContractRunner` e não devem depender de ficheiros temporários, janelas ou processos reais.

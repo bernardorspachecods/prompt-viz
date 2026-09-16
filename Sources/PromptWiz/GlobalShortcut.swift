@@ -44,7 +44,7 @@ struct GlobalShortcut: Codable, Equatable {
 }
 
 enum GlobalShortcutPersistence {
-    private static let key = "prompt-viz.open-composer-shortcut"
+    private static let key = "prompt-wiz.open-composer-shortcut"
 
     static func load(defaults: UserDefaults = .standard) -> GlobalShortcut {
         guard

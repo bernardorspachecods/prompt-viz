@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="Assets/PromptVizLogo.svg" width="104" alt="Prompt Viz">
-  <h1>Prompt Viz</h1>
+  <img src="Assets/PromptWizLogo.svg" width="104" alt="Prompt Wiz">
+  <h1>Prompt Wiz</h1>
   <p>Prompts melhores. Enviados sem interrupções.</p>
 
   <p>
@@ -12,22 +12,22 @@
   </p>
 </div>
 
-## ✦ O teu fluxo, sem interrupções
+## O teu fluxo, sem interrupções
 
 <table align="center">
   <tr>
     <td align="center" width="180">
-      <h3>⚡ Captura</h3>
+      <h3>Captura</h3>
       <sub>Apanha o rascunho<br>do Codex</sub>
     </td>
     <td align="center" width="40">→</td>
     <td align="center" width="180">
-      <h3>✎ Compõe</h3>
+      <h3>Compõe</h3>
       <sub>Edita, organiza<br>e melhora</sub>
     </td>
     <td align="center" width="40">→</td>
     <td align="center" width="180">
-      <h3>✦ Envia</h3>
+      <h3>Envia</h3>
       <sub>Entrega no Terminal<br>com um atalho</sub>
     </td>
   </tr>
@@ -42,7 +42,7 @@
 <br>
 
 ```bash
-./scripts/run-prompt-viz.sh
+./scripts/run-prompt-wiz.sh
 ```
 
 <p align="center">

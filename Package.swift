@@ -2,28 +2,28 @@
 import PackageDescription
 
 let package = Package(
-    name: "PromptViz",
+    name: "PromptWiz",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "PromptViz", targets: ["PromptViz"]),
-        .executable(name: "PromptVizContractRunner", targets: ["PromptVizContractRunner"])
+        .executable(name: "PromptWiz", targets: ["PromptWiz"]),
+        .executable(name: "PromptWizContractRunner", targets: ["PromptWizContractRunner"])
     ],
     targets: [
         .target(
-            name: "PromptVizCore",
-            path: "Sources/PromptVizCore",
+            name: "PromptWizCore",
+            path: "Sources/PromptWizCore",
             exclude: ["CONTEXT.md"]
         ),
         .executableTarget(
-            name: "PromptViz",
-            dependencies: ["PromptVizCore"],
-            path: "Sources/PromptViz",
+            name: "PromptWiz",
+            dependencies: ["PromptWizCore"],
+            path: "Sources/PromptWiz",
             exclude: ["CONTEXT.md"]
         ),
         .executableTarget(
-            name: "PromptVizContractRunner",
-            dependencies: ["PromptVizCore"],
-            path: "Sources/PromptVizContractRunner",
+            name: "PromptWizContractRunner",
+            dependencies: ["PromptWizCore"],
+            path: "Sources/PromptWizContractRunner",
             exclude: ["CONTEXT.md"]
         )
     ]

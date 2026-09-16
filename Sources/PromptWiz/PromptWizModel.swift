@@ -1,11 +1,11 @@
 import AppKit
 import Foundation
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 
 @MainActor
-final class PromptVizModel: ObservableObject {
-    static let shared = PromptVizModel()
+final class PromptWizModel: ObservableObject {
+    static let shared = PromptWizModel()
 
     @Published private(set) var workspaces: [Workspace] = []
     @Published private(set) var snippets: [Snippet] = []
@@ -79,7 +79,7 @@ final class PromptVizModel: ObservableObject {
         hideAfterSend = sendBehaviorPersistence.loadHideAfterSend()
         skills = []
         sync()
-        PromptVizLog.info("Application model initialized")
+        PromptWizLog.info("Application model initialized")
         workspaceMonitor = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.pruneClosedWorkspaces()
@@ -110,7 +110,7 @@ final class PromptVizModel: ObservableObject {
     }
 
     func captureActiveTerminalSession() {
-        PromptVizLog.info("Capturing active Terminal session")
+        PromptWizLog.info("Capturing active Terminal session")
         // Capture can switch to a new workspace, so persist the current editor
         // before changing selectedWorkspaceID or letting the new tab activate.
         saveCurrentDraft()
@@ -121,7 +121,7 @@ final class PromptVizModel: ObservableObject {
         guard terminalAutomation.isTerminalFrontmost else {
             isCapturingTerminalSession = false
             let error = TerminalAutomationError.terminalNotActive
-            PromptVizLog.error(error, context: "Capture failed")
+            PromptWizLog.error(error, context: "Capture failed")
             errorMessage = error.localizedDescription
             openMainWindow()
             return
@@ -146,9 +146,9 @@ final class PromptVizModel: ObservableObject {
             workspaceStore.updateDraft(editorDraft, for: workspace.id)
             sync()
             openMainWindow()
-            PromptVizLog.info("Terminal session captured successfully")
+            PromptWizLog.info("Terminal session captured successfully")
         } catch {
-            PromptVizLog.error(error, context: "Capture failed")
+            PromptWizLog.error(error, context: "Capture failed")
             isCapturingTerminalSession = false
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
@@ -228,9 +228,9 @@ final class PromptVizModel: ObservableObject {
         do {
             try launchAtLogin.setEnabled(enabled)
             launchesAtLogin = launchAtLogin.isEnabled
-            PromptVizLog.info("Launch at login changed to \(launchesAtLogin)")
+            PromptWizLog.info("Launch at login changed to \(launchesAtLogin)")
         } catch {
-            PromptVizLog.error(error, context: "Could not update launch at login")
+            PromptWizLog.error(error, context: "Could not update launch at login")
             launchesAtLogin = launchAtLogin.isEnabled
             errorMessage = "Could not update the launch-at-login setting.\n\n\(error.localizedDescription)"
         }
@@ -239,18 +239,18 @@ final class PromptVizModel: ObservableObject {
     func setOpenComposerShortcut(_ shortcut: GlobalShortcut) {
         openComposerShortcut = shortcut
         shortcutPersistence.save(shortcut)
-        PromptVizLog.info("Open Composer shortcut changed to \(shortcut.displayName)")
+        PromptWizLog.info("Open Composer shortcut changed to \(shortcut.displayName)")
     }
 
     func setHideAfterSend(_ enabled: Bool) {
         hideAfterSend = enabled
         sendBehaviorPersistence.saveHideAfterSend(enabled)
-        PromptVizLog.info("Hide after send changed to \(enabled)")
+        PromptWizLog.info("Hide after send changed to \(enabled)")
     }
 
     func insert(_ snippet: Snippet) {
         insertionRequest = TextInsertionRequest(text: snippet.body)
-        PromptVizLog.info("Template inserted")
+        PromptWizLog.info("Template inserted")
     }
 
     func registerImageAttachment(_ data: Data, number: Int) {
@@ -258,18 +258,18 @@ final class PromptVizModel: ObservableObject {
         editorImageAttachments.removeAll { $0.number == number }
         editorImageAttachments.append(PromptImageAttachment(number: number, data: data))
         saveCurrentDraft()
-        PromptVizLog.info("Image attachment added")
+        PromptWizLog.info("Image attachment added")
     }
 
     func requestImagePaste() {
         guard let data = clipboard.pngData() else {
-            PromptVizLog.info("Image preview requested but clipboard has no supported image")
+            PromptWizLog.info("Image preview requested but clipboard has no supported image")
             errorMessage = "No supported image was found in the clipboard."
             return
         }
 
         imagePastePreview = ImagePastePreview(data: data)
-        PromptVizLog.info("Image preview opened from app command")
+        PromptWizLog.info("Image preview opened from app command")
     }
 
     func confirmImagePaste(_ preview: ImagePastePreview) {
@@ -277,13 +277,13 @@ final class PromptVizModel: ObservableObject {
         imagePasteRequest = ImagePasteRequest(data: preview.data)
         imagePastePreview = nil
         editorFocusRequest = UUID()
-        PromptVizLog.info("Image paste confirmed from preview")
+        PromptWizLog.info("Image paste confirmed from preview")
     }
 
     func cancelImagePaste(_ preview: ImagePastePreview) {
         guard imagePastePreview?.id == preview.id else { return }
         imagePastePreview = nil
-        PromptVizLog.info("Image paste cancelled from preview")
+        PromptWizLog.info("Image paste cancelled from preview")
     }
 
     func loadHistoryEntry(_ entry: PromptHistoryEntry) {
@@ -293,21 +293,21 @@ final class PromptVizModel: ObservableObject {
         editorCursorLocationRequest = (entry.prompt as NSString).length
         editorFocusRequest = UUID()
         sync(reconcileWindows: false)
-        PromptVizLog.info("Prompt history entry loaded")
+        PromptWizLog.info("Prompt history entry loaded")
     }
 
     func removeHistoryEntry(_ entry: PromptHistoryEntry) {
         promptHistory.remove(id: entry.id)
         promptHistoryPersistence.save(promptHistory.entries)
         sync(reconcileWindows: false)
-        PromptVizLog.info("Prompt history entry deleted")
+        PromptWizLog.info("Prompt history entry deleted")
     }
 
     func clearHistory() {
         promptHistory.removeAll()
         promptHistoryPersistence.save(promptHistory.entries)
         sync(reconcileWindows: false)
-        PromptVizLog.info("Prompt history cleared")
+        PromptWizLog.info("Prompt history cleared")
     }
 
     func selectSkill(_ skill: SkillDescriptor) {
@@ -350,7 +350,7 @@ final class PromptVizModel: ObservableObject {
         do {
             let textToSend = latestEditorText
             guard !textToSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            PromptVizLog.info("Sending prompt with \(editorImageAttachments.count) image attachment(s)")
+            PromptWizLog.info("Sending prompt with \(editorImageAttachments.count) image attachment(s)")
             try terminalAutomation.sendCodexInputAndReturn(
                 textToSend,
                 imageAttachments: editorImageAttachments,
@@ -369,9 +369,9 @@ final class PromptVizModel: ObservableObject {
             if hideAfterSend {
                 minimizeMainWindow()
             }
-            PromptVizLog.info("Prompt sent successfully")
+            PromptWizLog.info("Prompt sent successfully")
         } catch {
-            PromptVizLog.error(error, context: "Could not send prompt")
+            PromptWizLog.error(error, context: "Could not send prompt")
             errorMessage = error.localizedDescription
             shouldOfferAccessibilitySettings = (error as? TerminalAutomationError)?.isAccessibilityNotTrusted == true
             shouldOfferAutomationSettings = (error as? TerminalAutomationError)?.isAutomationNotTrusted == true
@@ -380,34 +380,34 @@ final class PromptVizModel: ObservableObject {
 
     func addSnippet(title: String, body: String, favorite: Bool) {
         guard snippetLibrary.add(Snippet(title: title, body: body, isFavorite: favorite)) else {
-            PromptVizLog.info("Template creation rejected because the 9-template limit was reached")
-            errorMessage = "Prompt Viz supports up to 9 templates because there are only 9 shortcut slots."
+            PromptWizLog.info("Template creation rejected because the 9-template limit was reached")
+            errorMessage = "Prompt Wiz supports up to 9 templates because there are only 9 shortcut slots."
             return
         }
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
-        PromptVizLog.info("Template created")
+        PromptWizLog.info("Template created")
     }
 
     func updateSnippet(_ snippet: Snippet) {
         snippetLibrary.update(snippet)
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
-        PromptVizLog.info("Template updated")
+        PromptWizLog.info("Template updated")
     }
 
     func removeSnippet(_ snippet: Snippet) {
         snippetLibrary.remove(id: snippet.id)
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
-        PromptVizLog.info("Template deleted")
+        PromptWizLog.info("Template deleted")
     }
 
     func moveSnippet(id: UUID, toShortcutNumber shortcutNumber: Int) {
         snippetLibrary.moveSnippet(id, toShortcutNumber: shortcutNumber)
         snippetPersistence.save(snippetLibrary.snippets)
         sync()
-        PromptVizLog.info("Template moved to shortcut slot \(shortcutNumber)")
+        PromptWizLog.info("Template moved to shortcut slot \(shortcutNumber)")
     }
 
     func openMainWindow() {

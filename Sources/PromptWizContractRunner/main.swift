@@ -1,6 +1,6 @@
 import Foundation
 import Darwin
-import PromptVizCore
+import PromptWizCore
 
 struct ContractFailure: Error, CustomStringConvertible {
     let message: String
@@ -9,7 +9,7 @@ struct ContractFailure: Error, CustomStringConvertible {
 }
 
 @main
-struct PromptVizContractRunner {
+struct PromptWizContractRunner {
     static func main() {
         do {
             try workspaceContracts()
@@ -19,9 +19,9 @@ struct PromptVizContractRunner {
             try promptHistoryContracts()
             try promptImageContracts()
             try promptEditorTokenContracts()
-        print("PromptViz contracts: PASS (45 checks)")
+        print("PromptWiz contracts: PASS (45 checks)")
         } catch {
-            fputs("PromptViz contracts: FAIL — \(error)\n", stderr)
+            fputs("PromptWiz contracts: FAIL — \(error)\n", stderr)
             exit(1)
         }
     }
@@ -290,29 +290,29 @@ struct PromptVizContractRunner {
         output anterior
         ──────────────────────────────────────────────────────────────────────────────
 
-        ›  PROMPT_VIZ_BEGIN
+        ›  PROMPT_WIZ_BEGIN
             primeira linha\u{20}
           continua na mesma linha
             terceira linha
 
-          gpt-5.6-luna high · prompt-viz · Context 70% left
+          gpt-5.6-luna high · prompt-wiz · Context 70% left
 
         """
 
         try check(
             CodexTerminalInputParser.extractDraft(from: screen) ==
-                "PROMPT_VIZ_BEGIN\nprimeira linha continua na mesma linha\nterceira linha",
+                "PROMPT_WIZ_BEGIN\nprimeira linha continua na mesma linha\nterceira linha",
             "Codex input parser preserves real newlines and joins visual wraps"
         )
         try check(
             CodexTerminalInputParser.extractDraft(
-                from: "›  \n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+                from: "›  \n  gpt-5.6-luna high · prompt-wiz · Context 70% left\n"
             ) == "",
             "Codex input parser recognizes an empty draft"
         )
         try check(
             CodexTerminalInputParser.extractDraft(
-                from: "›  Ask Codex to do anything\n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+                from: "›  Ask Codex to do anything\n  gpt-5.6-luna high · prompt-wiz · Context 70% left\n"
             ) == "",
             "Codex input parser ignores the empty-composer placeholder"
         )
@@ -322,7 +322,7 @@ struct PromptVizContractRunner {
         )
         try check(
             CodexTerminalInputParser.extractDraft(
-                from: "›  última palavra \n  gpt-5.6-luna high · prompt-viz · Context 70% left\n"
+                from: "›  última palavra \n  gpt-5.6-luna high · prompt-wiz · Context 70% left\n"
             ) == "última palavra ",
             "Codex input parser preserves a trailing space"
         )

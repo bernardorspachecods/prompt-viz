@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import PromptVizCore
+import PromptWizCore
 
 protocol TerminalAutomationProviding: AnyObject, Sendable {
     var isTerminalFrontmost: Bool { get }

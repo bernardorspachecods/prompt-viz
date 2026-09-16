@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppSettingsView: View {
-    @ObservedObject var model: PromptVizModel
+    @ObservedObject var model: PromptWizModel
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -9,7 +9,7 @@ struct AppSettingsView: View {
             Text("Settings")
                 .font(.title2.weight(.semibold))
 
-            Toggle("Launch Prompt Viz at login", isOn: Binding(
+            Toggle("Launch Prompt Wiz at login", isOn: Binding(
                 get: { model.launchesAtLogin },
                 set: { model.setLaunchAtLogin($0) }
             ))
@@ -33,7 +33,7 @@ struct AppSettingsView: View {
                 .help("Reset shortcut")
             }
 
-            Text("Prompt Viz will run in the background and remain available through the \(model.openComposerShortcut.displayName) shortcut.")
+            Text("Prompt Wiz will run in the background and remain available through the \(model.openComposerShortcut.displayName) shortcut.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 

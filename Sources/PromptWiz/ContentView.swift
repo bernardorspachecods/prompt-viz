@@ -1,5 +1,5 @@
 import AppKit
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -19,14 +19,14 @@ enum SnippetEditorPresentation: Identifiable {
 
 @MainActor
 struct ContentView: View {
-    @ObservedObject var model: PromptVizModel
+    @ObservedObject var model: PromptWizModel
     @State private var snippetEditorPresentation: SnippetEditorPresentation?
     @State private var showingSettings = false
     @State private var historySearch = ""
     @State private var showingHistoryClearConfirmation = false
 
     private var composerTitle: String {
-        let title = model.selectedWorkspace?.title ?? "Prompt Viz"
+        let title = model.selectedWorkspace?.title ?? "Prompt Wiz"
         return String(title.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: true).first ?? Substring(title))
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -71,7 +71,7 @@ struct ContentView: View {
                 onConfirm: { model.confirmImagePaste(preview) }
             )
         }
-        .alert("Prompt Viz", isPresented: Binding(
+        .alert("Prompt Wiz", isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
         )) {
@@ -90,7 +90,7 @@ struct ContentView: View {
         } message: {
             Text(model.errorMessage ?? "")
         }
-        .onReceive(NotificationCenter.default.publisher(for: .promptVizOpenSettings)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .promptWizOpenSettings)) { _ in
             showingSettings = true
         }
     }
@@ -270,7 +270,7 @@ struct ContentView: View {
                 .controlSize(.mini)
                 .foregroundStyle(Color.gray)
                 .tint(Color.gray)
-                .help("Hide Prompt Viz after sending a prompt")
+        .help("Hide Prompt Wiz after sending a prompt")
             }
         }
         .padding(14)

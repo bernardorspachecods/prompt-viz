@@ -1,13 +1,13 @@
-# Contexto de PromptViz
+# Contexto de PromptWiz
 
 Este target contém a aplicação macOS SwiftUI e as integrações AppKit.
 
-- `PromptVizApp.swift` contém apenas a entrada SwiftUI da aplicação.
-- `PromptVizModel.swift` coordena o estado da app e expõe a fachada usada pelas
+- `PromptWizApp.swift` contém apenas a entrada SwiftUI da aplicação.
+- `PromptWizModel.swift` coordena o estado da app e expõe a fachada usada pelas
   views.
 - `TerminalAutomation.swift` encapsula as integrações AppKit/Acessibilidade com
   o Terminal.app; os contratos substituíveis estão em
-  `PromptVizDependencies.swift`.
+  `PromptWizDependencies.swift`.
 - As views, o editor AppKit, a shell de janelas e os serviços de suporte vivem
   em ficheiros separados dentro deste target.
 

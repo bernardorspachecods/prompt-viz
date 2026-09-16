@@ -1,5 +1,5 @@
 import AppKit
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 
 struct PromptTextEditor: NSViewRepresentable {
@@ -327,7 +327,7 @@ struct PromptTextEditor: NSViewRepresentable {
                     to: textView,
                     selectedSkillRanges: selectedSkillRanges
                 )
-                PromptVizLog.info("Inline token edit expanded to the whole block")
+                PromptWizLog.info("Inline token edit expanded to the whole block")
                 return false
             }
 
@@ -343,7 +343,7 @@ struct PromptTextEditor: NSViewRepresentable {
                 return true
             }
 
-            PromptVizLog.info("Image shortcut received through text replacement")
+                PromptWizLog.info("Image shortcut received through text replacement")
             return !handleImagePaste(in: textView, selectedRange: affectedCharRange)
         }
 
@@ -403,26 +403,26 @@ struct PromptTextEditor: NSViewRepresentable {
             if let confirmedImageData {
                 guard !confirmedImageData.isEmpty else { return false }
                 imageData = confirmedImageData
-                PromptVizLog.info("Image paste using confirmed preview data")
+                PromptWizLog.info("Image paste using confirmed preview data")
             } else {
                 let pasteboard = NSPasteboard.general
                 let types = pasteboard.types?.map(\.rawValue).joined(separator: ", ") ?? "none"
-                PromptVizLog.info("Image pasteboard types: \(types)")
+                PromptWizLog.info("Image pasteboard types: \(types)")
 
                 if let pngData = pasteboard.data(forType: .png), !pngData.isEmpty {
                     imageData = pngData
-                    PromptVizLog.info("Image paste found PNG data")
+                    PromptWizLog.info("Image paste found PNG data")
                 } else if let tiffData = pasteboard.data(forType: .tiff),
                           let image = NSImage(data: tiffData),
                           let convertedData = pngData(from: image) {
                     imageData = convertedData
-                    PromptVizLog.info("Image paste converted TIFF data to PNG")
+                    PromptWizLog.info("Image paste converted TIFF data to PNG")
                 } else if let image = NSImage(pasteboard: pasteboard),
                           let convertedData = pngData(from: image) {
                     imageData = convertedData
-                    PromptVizLog.info("Image paste converted NSImage data to PNG")
+                    PromptWizLog.info("Image paste converted NSImage data to PNG")
                 } else {
-                    PromptVizLog.info("Image paste found no supported image data")
+                    PromptWizLog.info("Image paste found no supported image data")
                     return false
                 }
             }
@@ -454,7 +454,7 @@ struct PromptTextEditor: NSViewRepresentable {
                 to: textView,
                 selectedSkillRanges: selectedSkillRanges
             )
-            PromptVizLog.info("Image placeholder inserted: \(token)")
+            PromptWizLog.info("Image placeholder inserted: \(token)")
             return true
         }
 

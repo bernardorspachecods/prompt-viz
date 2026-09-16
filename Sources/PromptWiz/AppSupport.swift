@@ -9,19 +9,19 @@ import OSLog
 import ServiceManagement
 import SwiftUI
 import UniformTypeIdentifiers
-import PromptVizCore
+import PromptWizCore
 
-enum PromptVizBuild {
+enum PromptWizBuild {
     static let label = "MVP build 22"
 }
-enum PromptVizLog {
-    private static let logger = Logger(subsystem: "local.prompt-viz.app", category: "runtime")
+enum PromptWizLog {
+    private static let logger = Logger(subsystem: "local.prompt-wiz.app", category: "runtime")
     private static let lock = NSLock()
 
     static let fileURL = FileManager.default
         .urls(for: .libraryDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Logs", isDirectory: true)
-        .appendingPathComponent("PromptViz.log")
+        .appendingPathComponent("PromptWiz.log")
 
     static func info(_ message: String) {
         logger.info("\(message, privacy: .public)")

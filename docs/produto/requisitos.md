@@ -8,7 +8,7 @@ atualmente. A implementação técnica está em
 
 ## Aplicação
 
-Prompt Viz é uma aplicação nativa para macOS que abre um compositor de texto e
+Prompt Wiz é uma aplicação nativa para macOS que abre um compositor de texto e
 o liga à sessão ativa do Codex no Terminal.app.
 
 - A app pode arrancar automaticamente no login e corre em segundo plano, sem

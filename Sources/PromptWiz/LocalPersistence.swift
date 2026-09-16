@@ -1,9 +1,9 @@
 import Foundation
-import PromptVizCore
+import PromptWizCore
 
 final class LocalSnippetPersistence {
     private let defaults: UserDefaults
-    private let key = "prompt-viz.snippets"
+    private let key = "prompt-wiz.snippets"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -46,7 +46,7 @@ final class LocalSnippetPersistence {
 }
 final class LocalPromptHistoryPersistence {
     private let defaults: UserDefaults
-    private let key = "prompt-viz.prompt-history"
+    private let key = "prompt-wiz.prompt-history"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -69,7 +69,7 @@ final class LocalPromptHistoryPersistence {
 
 struct UserDefaultsSendBehaviorPersistence {
     private let defaults: UserDefaults
-    private let key = "prompt-viz.hide-after-send"
+    private let key = "prompt-wiz.hide-after-send"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

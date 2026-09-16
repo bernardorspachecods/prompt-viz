@@ -1,5 +1,5 @@
 import Foundation
-import PromptVizCore
+import PromptWizCore
 
 final class SkillCatalog {
     private let fileManager: FileManager

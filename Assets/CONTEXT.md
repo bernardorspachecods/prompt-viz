@@ -2,7 +2,7 @@
 
 Esta pasta contém os assets de identidade visual da app.
 
-- [`PromptVizLogo.svg`](PromptVizLogo.svg) é a marca vetorial sem texto usada
+- [`PromptWizLogo.svg`](PromptWizLogo.svg) é a marca vetorial sem texto usada
   pela app e pela menu bar.
 
 O script de build copia o SVG para os recursos do bundle. O símbolo não contém

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>Prompt Wiz</title>
+  <desc>Uma moldura branca aberta com um cursor de prompt sobre fundo preto.</desc>
+  <rect width="64" height="64" rx="12" fill="#000000"/>
+  <g stroke-linecap="round" stroke-linejoin="round" stroke-width="5">
+    <path d="M13 16v32M13 16h10M13 48h10" stroke="#FFFFFF"/>
+    <path d="m25 23 9 9-9 9" stroke="#FFFFFF"/>
+    <path d="M40 23h11M40 32h7M40 41h11" stroke="#FFFFFF"/>
+  </g>
+</svg>

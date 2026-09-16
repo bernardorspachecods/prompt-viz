@@ -50,7 +50,7 @@ exercida pelo contract runner.
 A UI apresenta estado e envia comandos; não deve chamar diretamente `AXUIElement`, escrever na clipboard ou sintetizar teclas.
 O arranque não apresenta pedidos de permissão. A app tenta identificar o Terminal quando o utilizador abre o compositor e só oferece as Definições de Acessibilidade se a API devolver explicitamente que está desativada.
 
-O `PromptVizModel` compõe os efeitos externos através de interfaces internas
+O `PromptWizModel` compõe os efeitos externos através de interfaces internas
 pequenas. As implementações reais cobrem automação do Terminal, persistência,
 descoberta de skills, clipboard, login e atalhos; a inicialização por defeito é
 a composição usada pela app e a inicialização por dependências permite testar a
@@ -92,7 +92,7 @@ consecutivas; se reaparecer entretanto, o workspace é mantido.
 ## Persistência
 
 - Snippets são serializados em `UserDefaults.standard`.
-- Eventos e erros de runtime são registados em `~/Library/Logs/PromptViz.log` e
+- Eventos e erros de runtime são registados em `~/Library/Logs/PromptWiz.log` e
   no sistema de logs do macOS.
 - Workspaces e rascunhos ficam em memória e não são restaurados entre execuções.
 - O histórico de prompts enviados é persistido localmente em `UserDefaults` e

@@ -2,6 +2,6 @@
 
 Os targets Swift estão separados por fronteira:
 
-- [`PromptViz/CONTEXT.md`](PromptViz/CONTEXT.md): aplicação macOS e integrações de sistema.
-- [`PromptVizCore/CONTEXT.md`](PromptVizCore/CONTEXT.md): regras puras e modelos testáveis.
-- [`PromptVizContractRunner/CONTEXT.md`](PromptVizContractRunner/CONTEXT.md): validação executável dos contratos.
+- [`PromptWiz/CONTEXT.md`](PromptWiz/CONTEXT.md): aplicação macOS e integrações de sistema.
+- [`PromptWizCore/CONTEXT.md`](PromptWizCore/CONTEXT.md): regras puras e modelos testáveis.
+- [`PromptWizContractRunner/CONTEXT.md`](PromptWizContractRunner/CONTEXT.md): validação executável dos contratos.

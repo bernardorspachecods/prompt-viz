@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 @main
-struct PromptVizApp: App {
+struct PromptWizApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var model = PromptVizModel.shared
+    @StateObject private var model = PromptWizModel.shared
 
     var body: some Scene {
         Settings {
@@ -13,7 +13,7 @@ struct PromptVizApp: App {
         .commands {
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
-                    NotificationCenter.default.post(name: .promptVizOpenSettings, object: nil)
+                    NotificationCenter.default.post(name: .promptWizOpenSettings, object: nil)
                 }
                 .keyboardShortcut(",", modifiers: [.command])
             }

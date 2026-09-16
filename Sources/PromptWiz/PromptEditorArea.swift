@@ -1,10 +1,10 @@
 import AppKit
-import PromptVizCore
+import PromptWizCore
 import SwiftUI
 
 @MainActor
 struct PromptEditorArea: View {
-    @ObservedObject var model: PromptVizModel
+    @ObservedObject var model: PromptWizModel
     @State private var text = ""
     @State private var hoveredSkillID: String?
     @State private var selectedSkillIndex = -1

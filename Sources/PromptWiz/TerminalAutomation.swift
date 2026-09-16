@@ -2,7 +2,7 @@ import ApplicationServices
 import AppKit
 import CoreGraphics
 import Foundation
-import PromptVizCore
+import PromptWizCore
 
 struct TerminalSession: Equatable, Identifiable {
     let id: String
@@ -33,13 +33,13 @@ enum TerminalAutomationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessibilityNotTrusted:
-            return "macOS has not yet allowed Prompt Viz to send keystrokes to another app. Enable Prompt Viz in Accessibility and try again."
+            return "macOS has not yet allowed Prompt Wiz to send keystrokes to another app. Enable Prompt Wiz in Accessibility and try again."
         case .automationNotTrusted:
-            return "macOS blocked Prompt Viz from reading the active Terminal.app tab. Allow Prompt Viz to control Terminal.app in Automation settings."
+            return "macOS blocked Prompt Wiz from reading the active Terminal.app tab. Allow Prompt Wiz to control Terminal.app in Automation settings."
         case .terminalNotActive:
             return "Activate the correct Terminal.app tab before sending."
         case .terminalWindowUnavailable:
-            return "Terminal.app is active, but I couldn't identify the current tab. Close and reopen Prompt Viz with that tab selected."
+            return "Terminal.app is active, but I couldn't identify the current tab. Close and reopen Prompt Wiz with that tab selected."
         case .sessionChanged:
             return "The Terminal tab changed. Select it again and try again."
         case .sendFailed:
@@ -53,7 +53,7 @@ enum TerminalAutomationError: LocalizedError {
 }
 
 final class TerminalAutomation: @unchecked Sendable {
-    private let tabSelectionQueue = DispatchQueue(label: "com.promptviz.terminal-tab-selection")
+    private let tabSelectionQueue = DispatchQueue(label: "com.promptwiz.terminal-tab-selection")
 
     var isTerminalFrontmost: Bool {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.apple.Terminal"
@@ -275,7 +275,7 @@ final class TerminalAutomation: @unchecked Sendable {
             let reference = nsBuffer.substring(with: match.range)
             let number = Int(nsBuffer.substring(with: match.range(at: 1)))
             if let number, let attachment = attachmentsByNumber[number] {
-                PromptVizLog.info("Sending image attachment #[\(number)] with Ctrl+V")
+                PromptWizLog.info("Sending image attachment #[\(number)] with Ctrl+V")
                 try pasteImage(attachment.data, to: processIdentifier)
             } else {
                 try pasteText(reference, to: processIdentifier)
@@ -318,7 +318,7 @@ final class TerminalAutomation: @unchecked Sendable {
         // clipboard. Cmd+V is the terminal's normal text-paste command.
         postKey(virtualKey: 9, flags: .maskControl, to: processIdentifier)
         Thread.sleep(forTimeInterval: 0.05)
-        PromptVizLog.info("Image PNG pasted to Codex with Ctrl+V")
+        PromptWizLog.info("Image PNG pasted to Codex with Ctrl+V")
     }
 
     func requestTabSelection(tty: String) {

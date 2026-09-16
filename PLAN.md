@@ -14,16 +14,16 @@ documento descreve apenas a mudança proposta.
 
 ## Diagnóstico
 
-- `Sources/PromptViz/PromptVizApp.swift` concentra cerca de 2.587 linhas e
+- `Sources/PromptWiz/PromptWizApp.swift` concentra cerca de 2.587 linhas e
   reúne automação do Terminal, estado da app, lifecycle, persistência, atalhos,
   clipboard e várias views.
-- `Sources/PromptVizCore/Domain.swift` concentra cerca de 615 linhas com
+- `Sources/PromptWizCore/Domain.swift` concentra cerca de 615 linhas com
   parser, tokens, modelos e três stores de domínio.
 - A UI acede diretamente a `snippetLibrary`, `promptHistory`, `skillCatalog` e
-  à automação através do `PromptVizModel`, apesar de a arquitetura pretender
+  à automação através do `PromptWizModel`, apesar de a arquitetura pretender
   que as views recebam estado e enviem comandos através de uma fronteira
   pequena.
-- `PromptVizModel` é singleton e instancia dependências concretas, o que torna
+- `PromptWizModel` é singleton e instancia dependências concretas, o que torna
   os fluxos de coordenação difíceis de testar sem Terminal.app, clipboard ou
   persistência real.
 
@@ -34,12 +34,12 @@ uma app macOS pequena.
 
 ### 1. Separar a aplicação macOS por responsabilidade
 
-Extrair de `PromptVizApp.swift`, mantendo os nomes e contratos públicos sempre
+Extrair de `PromptWizApp.swift`, mantendo os nomes e contratos públicos sempre
 que possível:
 
 - entrada da app e configuração da cena;
 - `AppDelegate` e `MainWindowController`;
-- `PromptVizModel`;
+- `PromptWizModel`;
 - automação do Terminal e erros associados;
 - logging, atalhos, clipboard e persistência local;
 - `ContentView`, `AppSettingsView` e `SnippetEditorSheet`;
@@ -93,7 +93,7 @@ Não abstrair APIs SwiftUI ou AppKit sem uma necessidade concreta de teste.
 - Preservar os fluxos observáveis: captura, troca e remoção de workspaces,
   envio, snippets, histórico, imagens, atalhos e definições.
 - Acrescentar verificações para os seams novos e manter o
-  `PromptVizContractRunner` como verificação do domínio puro.
+  `PromptWizContractRunner` como verificação do domínio puro.
 - Atualizar os `CONTEXT.md` apenas onde os caminhos ou fronteiras documentadas
   deixarem de corresponder ao código.
 - Não alterar requisitos, nomenclatura de produto ou comportamento funcional.
@@ -113,11 +113,11 @@ Não abstrair APIs SwiftUI ou AppKit sem uma necessidade concreta de teste.
 
 - Nenhum ficheiro combina lifecycle, UI, domínio e integração de sistema.
 - As views não acedem diretamente aos stores ou adaptadores internos.
-- `PromptVizModel` pode ser instanciado com fakes para testar coordenação sem
+- `PromptWizModel` pode ser instanciado com fakes para testar coordenação sem
   Terminal.app real.
-- O `PromptVizContractRunner` passa.
+- O `PromptWizContractRunner` passa.
 - O build conclui sem warnings novos relevantes.
-- `./scripts/run-prompt-viz.sh` conclui o build e abre a versão atualizada.
+- `./scripts/run-prompt-wiz.sh` conclui o build e abre a versão atualizada.
 - O teste manual cobre captura, troca de workspaces, envio, snippets,
   histórico, imagem e definições.
 
@@ -140,14 +140,14 @@ Não abstrair APIs SwiftUI ou AppKit sem uma necessidade concreta de teste.
 
 ## Resultado
 
-- `PromptVizApp.swift` ficou reservado à entrada da app; lifecycle, modelo,
+- `PromptWizApp.swift` ficou reservado à entrada da app; lifecycle, modelo,
   automação, suporte e views foram separados por responsabilidade.
 - `Domain.swift` foi substituído por ficheiros de parser, tokens, modelos e
   stores coesos.
-- As views usam as projeções e intenções do `PromptVizModel`; os stores e
+- As views usam as projeções e intenções do `PromptWizModel`; os stores e
   adaptadores externos ficaram privados do modelo.
 - O modelo aceita implementações substituíveis de automação, persistência,
   catálogo de skills, clipboard, login e atalhos.
-- O `PromptVizContractRunner` passou os 45 contratos.
+- O `PromptWizContractRunner` passou os 45 contratos.
 - `swift build` passou sem warnings novos relevantes.
-- `./scripts/run-prompt-viz.sh` concluiu o build de produção e abriu a app.
+- `./scripts/run-prompt-wiz.sh` concluiu o build de produção e abriu a app.
