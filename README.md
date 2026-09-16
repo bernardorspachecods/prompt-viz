@@ -1,37 +1,50 @@
-# Prompt Viz
+<div align="center">
+  <img src="Assets/PromptVizLogo.svg" width="104" alt="Prompt Viz">
+  <h1>Prompt Viz</h1>
+  <p>Prompts melhores. Enviados sem interrupções.</p>
 
-Compositor local de prompts para sessões do Codex no Terminal.app do macOS.
+  <p>
+    <code>⌘E</code>&nbsp; abrir
+    &nbsp;&nbsp;·&nbsp;&nbsp;
+    <code>⌘Return</code>&nbsp; enviar
+    &nbsp;&nbsp;·&nbsp;&nbsp;
+    <code>⌥V</code>&nbsp; imagem
+  </p>
+</div>
 
-Prompt Viz é uma ferramenta pessoal e local para compor prompts e entregá-las a sessões do Codex no Terminal.app.
+## ✦ O teu fluxo, sem interrupções
 
-## Executar
+<table align="center">
+  <tr>
+    <td align="center" width="180">
+      <h3>⚡ Captura</h3>
+      <sub>Apanha o rascunho<br>do Codex</sub>
+    </td>
+    <td align="center" width="40">→</td>
+    <td align="center" width="180">
+      <h3>✎ Compõe</h3>
+      <sub>Edita, organiza<br>e melhora</sub>
+    </td>
+    <td align="center" width="40">→</td>
+    <td align="center" width="180">
+      <h3>✦ Envia</h3>
+      <sub>Entrega no Terminal<br>com um atalho</sub>
+    </td>
+  </tr>
+</table>
 
-```bash
-swift run PromptViz
-```
+<br>
 
-Para gerar uma app local:
+<div align="center">
+  <code>snippets</code>&nbsp; <code>skills</code>&nbsp; <code>imagens</code>&nbsp; <code>histórico local</code>
+</div>
 
-```bash
-./scripts/build-app.sh
-```
-
-Para fechar instâncias antigas, recompilar e abrir a app numa só operação:
+<br>
 
 ```bash
 ./scripts/run-prompt-viz.sh
 ```
 
-## Validação automática
-
-```bash
-swift run PromptVizContractRunner
-```
-
-O contract runner valida a lógica pura de workspaces e snippets sem depender de uma janela gráfica ou de permissões de Acessibilidade.
-
-Para validar a coordenação da app com dependências falsas:
-
-```bash
-./scripts/run-prompt-viz-tests.sh
-```
+<p align="center">
+  <sub>macOS 13+ · Terminal.app · corre localmente</sub>
+</p>
