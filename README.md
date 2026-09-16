@@ -37,9 +37,25 @@
 
 <br>
 
-<div align="center">
-  <code>snippets</code>&nbsp; <code>skills</code>&nbsp; <code>imagens</code>&nbsp; <code>histórico local</code>
-</div>
+## O que faz o Prompt Wiz
+
+O Prompt Wiz é um compositor local para quem trabalha com o Codex no
+Terminal.app. Abre-se com `⌘E`, captura o rascunho da sessão ativa e permite
+reescrever a prompt numa janela própria, sem perder o contexto do trabalho.
+
+No mesmo espaço podes:
+
+- manter um workspace separado para cada sessão ou tab do Terminal;
+- reutilizar snippets, pesquisar skills locais escrevendo `$` e inserir imagens
+  do clipboard como referências no texto;
+- colar a prompt no Codex com `⇧⌘Return` para continuar a editá-la no Terminal,
+  ou enviá-la diretamente com `⌘Return`;
+- consultar o histórico local de prompts enviados, incluindo as imagens
+  associadas, e recuperar qualquer entrada para a editar novamente.
+
+A app corre em segundo plano, guarda snippets e histórico localmente e usa as
+permissões de Acessibilidade do macOS apenas para ler a sessão ativa e
+automatizar o Terminal.app.
 
 <br>
 
