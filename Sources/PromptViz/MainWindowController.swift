@@ -53,15 +53,25 @@ final class MainWindowController: NSObject, NSWindowDelegate {
             let selectedWorkspaceID = model.selectedWorkspaceID,
             let window = windowsByWorkspaceID[selectedWorkspaceID]
         else {
+            if emptyStateWindow?.isMiniaturized == true {
+                emptyStateWindow?.deminiaturize(nil)
+            }
             emptyStateWindow?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             model.finishTerminalSessionCapture()
             return
         }
 
+        if window.isMiniaturized {
+            window.deminiaturize(nil)
+        }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         model.finishTerminalSessionCapture()
+    }
+
+    func minimize() {
+        NSApp.hide(nil)
     }
 
     func selectRelativeTab(by offset: Int) {

@@ -66,3 +66,21 @@ final class LocalPromptHistoryPersistence {
         defaults.set(data, forKey: key)
     }
 }
+
+struct UserDefaultsSendBehaviorPersistence {
+    private let defaults: UserDefaults
+    private let key = "prompt-viz.hide-after-send"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func loadHideAfterSend() -> Bool {
+        guard defaults.object(forKey: key) != nil else { return true }
+        return defaults.bool(forKey: key)
+    }
+
+    func saveHideAfterSend(_ enabled: Bool) {
+        defaults.set(enabled, forKey: key)
+    }
+}

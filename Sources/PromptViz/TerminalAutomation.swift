@@ -227,7 +227,7 @@ final class TerminalAutomation: @unchecked Sendable {
         else { throw TerminalAutomationError.sendFailed }
 
         try selectTab(tty: expectedTTY)
-        Thread.sleep(forTimeInterval: 0.15)
+        Thread.sleep(forTimeInterval: 0.08)
 
         let activeSession = try activeSession()
         guard activeSession.id == expectedSession.id else {
@@ -304,7 +304,7 @@ final class TerminalAutomation: @unchecked Sendable {
         }
 
         postKey(virtualKey: 9, flags: .maskCommand, to: processIdentifier)
-        Thread.sleep(forTimeInterval: 0.2)
+        Thread.sleep(forTimeInterval: 0.08)
     }
 
     private func pasteImage(_ data: Data, to processIdentifier: pid_t) throws {
@@ -317,7 +317,7 @@ final class TerminalAutomation: @unchecked Sendable {
         // Codex's TUI reserves Ctrl+V for reading an image from the system
         // clipboard. Cmd+V is the terminal's normal text-paste command.
         postKey(virtualKey: 9, flags: .maskControl, to: processIdentifier)
-        Thread.sleep(forTimeInterval: 0.2)
+        Thread.sleep(forTimeInterval: 0.05)
         PromptVizLog.info("Image PNG pasted to Codex with Ctrl+V")
     }
 

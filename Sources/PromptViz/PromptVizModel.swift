@@ -21,6 +21,7 @@ final class PromptVizModel: ObservableObject {
     @Published var editorFocusRequest: UUID?
     @Published var skillHighlightRequest: SkillHighlightRequest?
     @Published var selectedSkillRanges: [NSRange] = []
+    @Published var hideAfterSend: Bool
     @Published private(set) var launchesAtLogin: Bool
     @Published private(set) var openComposerShortcut: GlobalShortcut
     @Published var errorMessage: String?
@@ -28,6 +29,7 @@ final class PromptVizModel: ObservableObject {
     @Published var shouldOfferAutomationSettings = false
     @Published var isMainWindowVisible = false
     var openMainWindowHandler: (() -> Void)?
+    var minimizeMainWindowHandler: (() -> Void)?
     var workspacesDidChangeHandler: (() -> Void)?
 
     private let workspaceStore: WorkspaceStore
@@ -40,6 +42,7 @@ final class PromptVizModel: ObservableObject {
     private let clipboard: any ClipboardProviding
     private let launchAtLogin: any LaunchAtLoginProviding
     private let shortcutPersistence: any GlobalShortcutPersistenceProviding
+    private let sendBehaviorPersistence: any SendBehaviorPersistenceProviding
     private var workspaceMonitor: Timer?
     private var skillMonitor: Timer?
     private var editorTextPublicationTimer: Timer?
@@ -57,7 +60,8 @@ final class PromptVizModel: ObservableObject {
         skillCatalog: any SkillCatalogProviding = SkillCatalog(),
         clipboard: any ClipboardProviding = SystemClipboard(),
         launchAtLogin: any LaunchAtLoginProviding = SystemLaunchAtLogin(),
-        shortcutPersistence: any GlobalShortcutPersistenceProviding = UserDefaultsGlobalShortcutPersistence()
+        shortcutPersistence: any GlobalShortcutPersistenceProviding = UserDefaultsGlobalShortcutPersistence(),
+        sendBehaviorPersistence: any SendBehaviorPersistenceProviding = UserDefaultsSendBehaviorPersistence()
     ) {
         self.workspaceStore = workspaceStore
         self.terminalAutomation = terminalAutomation
@@ -67,10 +71,12 @@ final class PromptVizModel: ObservableObject {
         self.clipboard = clipboard
         self.launchAtLogin = launchAtLogin
         self.shortcutPersistence = shortcutPersistence
+        self.sendBehaviorPersistence = sendBehaviorPersistence
         snippetLibrary = SnippetLibrary(snippets: snippetPersistence.load())
         promptHistory = PromptHistoryStore(entries: promptHistoryPersistence.load())
         launchesAtLogin = launchAtLogin.isEnabled
         openComposerShortcut = shortcutPersistence.load()
+        hideAfterSend = sendBehaviorPersistence.loadHideAfterSend()
         skills = []
         sync()
         PromptVizLog.info("Application model initialized")
@@ -236,6 +242,12 @@ final class PromptVizModel: ObservableObject {
         PromptVizLog.info("Open Composer shortcut changed to \(shortcut.displayName)")
     }
 
+    func setHideAfterSend(_ enabled: Bool) {
+        hideAfterSend = enabled
+        sendBehaviorPersistence.saveHideAfterSend(enabled)
+        PromptVizLog.info("Hide after send changed to \(enabled)")
+    }
+
     func insert(_ snippet: Snippet) {
         insertionRequest = TextInsertionRequest(text: snippet.body)
         PromptVizLog.info("Template inserted")
@@ -354,7 +366,9 @@ final class PromptVizModel: ObservableObject {
             editorImageAttachments = []
             saveCurrentDraft()
             sync(reconcileWindows: false)
-            openMainWindow()
+            if hideAfterSend {
+                minimizeMainWindow()
+            }
             PromptVizLog.info("Prompt sent successfully")
         } catch {
             PromptVizLog.error(error, context: "Could not send prompt")
@@ -398,8 +412,14 @@ final class PromptVizModel: ObservableObject {
 
     func openMainWindow() {
         isMainWindowVisible = true
+        NSApp?.unhide(nil)
         NSApp?.activate(ignoringOtherApps: true)
         openMainWindowHandler?()
+    }
+
+    func minimizeMainWindow() {
+        isMainWindowVisible = false
+        minimizeMainWindowHandler?()
     }
 
     func openAccessibilitySettings() {

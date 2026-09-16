@@ -15,12 +15,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.openMainWindowHandler = { [weak self] in
             self?.mainWindowController?.show()
         }
+        model.minimizeMainWindowHandler = { [weak self] in
+            self?.mainWindowController?.minimize()
+        }
         model.workspacesDidChangeHandler = { [weak self] in
             self?.mainWindowController?.reconcileWindows()
         }
 
         keyboardMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
-            guard model.openComposerShortcut.matches(event) else { return }
+            guard
+                GlobalShortcut.isAllowed(
+                    inBundleIdentifier: NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+                ),
+                model.openComposerShortcut.matches(event)
+            else { return }
             PromptVizLog.info("Open Composer shortcut pressed")
             model.captureActiveTerminalSession()
         }

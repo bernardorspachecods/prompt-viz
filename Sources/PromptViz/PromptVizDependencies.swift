@@ -78,3 +78,10 @@ struct UserDefaultsGlobalShortcutPersistence: GlobalShortcutPersistenceProviding
         GlobalShortcutPersistence.save(shortcut)
     }
 }
+
+protocol SendBehaviorPersistenceProviding {
+    func loadHideAfterSend() -> Bool
+    func saveHideAfterSend(_ enabled: Bool)
+}
+
+extension UserDefaultsSendBehaviorPersistence: SendBehaviorPersistenceProviding { }

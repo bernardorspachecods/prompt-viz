@@ -257,6 +257,20 @@ struct ContentView: View {
                 .help("Settings")
 
                 Spacer()
+
+                Toggle(isOn: Binding(
+                    get: { model.hideAfterSend },
+                    set: { model.setHideAfterSend($0) }
+                )) {
+                    Text("Hide after send")
+                        .padding(.leading, 5)
+                }
+                .font(.caption2)
+                .toggleStyle(.checkbox)
+                .controlSize(.mini)
+                .foregroundStyle(Color.gray)
+                .tint(Color.gray)
+                .help("Hide Prompt Viz after sending a prompt")
             }
         }
         .padding(14)

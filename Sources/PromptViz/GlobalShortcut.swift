@@ -3,6 +3,7 @@ import Foundation
 
 struct GlobalShortcut: Codable, Equatable {
     static let defaultShortcut = GlobalShortcut(keyCode: 14, modifierFlags: NSEvent.ModifierFlags.command.rawValue)
+    private static let terminalBundleIdentifier = "com.apple.Terminal"
     private static let relevantModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
 
     let keyCode: UInt16
@@ -21,6 +22,10 @@ struct GlobalShortcut: Codable, Equatable {
     func matches(_ event: NSEvent) -> Bool {
         let eventModifiers = event.modifierFlags.intersection(Self.relevantModifiers)
         return event.keyCode == keyCode && eventModifiers.rawValue == modifierFlags
+    }
+
+    static func isAllowed(inBundleIdentifier bundleIdentifier: String?) -> Bool {
+        bundleIdentifier == terminalBundleIdentifier
     }
 
     private static func keyName(for keyCode: UInt16) -> String {

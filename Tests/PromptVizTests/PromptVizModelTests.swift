@@ -23,6 +23,8 @@ struct PromptVizModelTests {
             try selectedSkillKeepsItsStyleAfterTextSynchronization()
             try selectingSkillPublishesPersistentSelectionRange()
             try cursorNavigationSkipsImageAndSelectedSkillBlocks()
+            try shortcutIsRestrictedToTerminalApplication()
+            try disablingHideAfterSendKeepsComposerVisible()
             print("PromptViz seam tests: PASS (\(checkCount) checks)")
         } catch {
             fputs("PromptViz seam tests: FAIL — \(error)\n", stderr)
@@ -111,6 +113,8 @@ struct PromptVizModelTests {
             automation: automation,
             historyPersistence: historyPersistence
         )
+        var minimizedComposer = false
+        model.minimizeMainWindowHandler = { minimizedComposer = true }
         model.captureActiveTerminalSession()
         model.updateEditorText("  Enviar isto  ")
 
@@ -128,6 +132,7 @@ struct PromptVizModelTests {
             model.history.first?.prompt == "Enviar isto",
             "send records a trimmed prompt in history"
         )
+        try check(minimizedComposer, "successful send minimizes the composer window")
         try check(
             historyPersistence.lastSaved?.first?.prompt == "Enviar isto",
             "send persists the updated history"
@@ -281,11 +286,51 @@ struct PromptVizModelTests {
         )
     }
 
+    private static func shortcutIsRestrictedToTerminalApplication() throws {
+        try check(
+            GlobalShortcut.isAllowed(inBundleIdentifier: "com.apple.Terminal"),
+            "the global shortcut is allowed in Terminal.app"
+        )
+        try check(
+            !GlobalShortcut.isAllowed(inBundleIdentifier: "com.apple.finder"),
+            "the global shortcut is ignored in Finder"
+        )
+        try check(
+            !GlobalShortcut.isAllowed(inBundleIdentifier: nil),
+            "the global shortcut is ignored without a frontmost application"
+        )
+    }
+
+    private static func disablingHideAfterSendKeepsComposerVisible() throws {
+        let automation = TerminalAutomationFake(
+            session: TerminalSession(
+                id: "/dev/ttys003",
+                title: "Prompt Viz — Hide setting test",
+                processIdentifier: 789,
+                tty: "/dev/ttys003"
+            )
+        )
+        let model = makeModel(
+            automation: automation,
+            sendBehaviorPersistence: FixedSendBehaviorPersistence(hideAfterSend: false)
+        )
+        var minimizedComposer = false
+        model.minimizeMainWindowHandler = { minimizedComposer = true }
+        model.captureActiveTerminalSession()
+        model.updateEditorText("Não esconder")
+
+        model.send()
+
+        try check(!model.hideAfterSend, "the hide-after-send setting loads disabled")
+        try check(!minimizedComposer, "disabled hide-after-send keeps the composer visible")
+    }
+
     private static func makeModel(
         automation: TerminalAutomationFake = TerminalAutomationFake(),
         snippetPersistence: any SnippetPersistenceProviding = EmptySnippetPersistence(),
         historyPersistence: any PromptHistoryPersistenceProviding = EmptyPromptHistoryPersistence(),
-        clipboard: any ClipboardProviding = EmptyClipboard()
+        clipboard: any ClipboardProviding = EmptyClipboard(),
+        sendBehaviorPersistence: any SendBehaviorPersistenceProviding = FixedSendBehaviorPersistence()
     ) -> PromptVizModel {
         PromptVizModel(
             terminalAutomation: automation,
@@ -294,7 +339,8 @@ struct PromptVizModelTests {
             skillCatalog: EmptySkillCatalog(),
             clipboard: clipboard,
             launchAtLogin: DisabledLaunchAtLogin(),
-            shortcutPersistence: DefaultShortcutPersistence()
+            shortcutPersistence: DefaultShortcutPersistence(),
+            sendBehaviorPersistence: sendBehaviorPersistence
         )
     }
 }
@@ -403,4 +449,15 @@ private struct DisabledLaunchAtLogin: LaunchAtLoginProviding {
 private struct DefaultShortcutPersistence: GlobalShortcutPersistenceProviding {
     func load() -> GlobalShortcut { .defaultShortcut }
     func save(_ shortcut: GlobalShortcut) {}
+}
+
+private struct FixedSendBehaviorPersistence: SendBehaviorPersistenceProviding {
+    let hideAfterSend: Bool
+
+    init(hideAfterSend: Bool = true) {
+        self.hideAfterSend = hideAfterSend
+    }
+
+    func loadHideAfterSend() -> Bool { hideAfterSend }
+    func saveHideAfterSend(_ enabled: Bool) {}
 }
