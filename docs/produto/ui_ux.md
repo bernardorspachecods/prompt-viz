@@ -47,6 +47,8 @@
 - Clicar numa entrada carrega-a no editor.
 - Cada entrada tem uma ação para apagar; limpar todo o histórico exige
   confirmação.
+- O tempo da entrada usa `now`, minutos (`m`), horas (`h`) ou dias (`d`),
+  conforme a idade; a partir de sete dias mostra uma data curta localizada.
 
 ## Imagens
 

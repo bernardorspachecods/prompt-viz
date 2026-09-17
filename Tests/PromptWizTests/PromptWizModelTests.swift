@@ -34,6 +34,7 @@ struct PromptWizModelTests {
             try editorCoordinatorContinuesNumberedListsOnReturn()
             try shortcutIsRestrictedToTerminalApplication()
             try disablingHideAfterSendKeepsComposerVisible()
+            try historyTimeUsesAdaptiveUnits()
             print("PromptWiz seam tests: PASS (\(checkCount) checks)")
         } catch {
             fputs("PromptWiz seam tests: FAIL — \(error)\n", stderr)
@@ -581,6 +582,51 @@ struct PromptWizModelTests {
 
         try check(!model.hideAfterSend, "the hide-after-send setting loads disabled")
         try check(!minimizedComposer, "disabled hide-after-send keeps the composer visible")
+    }
+
+    private static func historyTimeUsesAdaptiveUnits() throws {
+        let now = Date(timeIntervalSince1970: 1_000_000_000 + (10 * 60 * 60))
+
+        try check(
+            PromptHistoryTime.label(
+                for: now.addingTimeInterval(-30),
+                relativeTo: now,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) == "now",
+            "recent history entries show now"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: now.addingTimeInterval(-(59 * 60)),
+                relativeTo: now,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) == "59m",
+            "history entries under one hour show minutes"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: now.addingTimeInterval(-(754 * 60)),
+                relativeTo: now,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) == "12h",
+            "history entries over one hour show hours instead of total minutes"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: now.addingTimeInterval(-(6 * 24 * 60 * 60)),
+                relativeTo: now,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) == "6d",
+            "history entries under one week show days"
+        )
+        try check(
+            PromptHistoryTime.label(
+                for: now.addingTimeInterval(-(7 * 24 * 60 * 60)),
+                relativeTo: now,
+                locale: Locale(identifier: "en_US_POSIX")
+            ) == "Sep 2",
+            "history entries at one week show a calendar date"
+        )
     }
 
     private static func makeModel(

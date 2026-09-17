@@ -116,11 +116,27 @@ public struct PromptHistoryEntry: Identifiable, Codable, Equatable, Sendable {
 public enum PromptHistoryTime {
     public static func label(
         for date: Date,
-        relativeTo now: Date = Date()
+        relativeTo now: Date = Date(),
+        locale: Locale = .current
     ) -> String {
         let elapsed = max(0, now.timeIntervalSince(date))
-        let minutes = Int(elapsed / 60)
-        return minutes == 0 ? "now" : "\(minutes)m"
+
+        switch elapsed {
+        case 0..<60:
+            return "now"
+        case 0..<(60 * 60):
+            return "\(Int(elapsed / 60))m"
+        case 0..<(24 * 60 * 60):
+            return "\(Int(elapsed / (60 * 60)))h"
+        case 0..<(7 * 24 * 60 * 60):
+            return "\(Int(elapsed / (24 * 60 * 60)))d"
+        default:
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.setLocalizedDateFormatFromTemplate("d MMM")
+            return formatter.string(from: date)
+        }
     }
 }
 
